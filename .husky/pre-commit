@@ -1,0 +1,25 @@
+#!/bin/sh
+# LiftLogic pre-commit hook — lint and format check
+
+# Activate virtual environment if present
+if [ -f ".venv/bin/activate" ]; then
+  . .venv/bin/activate
+fi
+
+echo "Running ruff lint..."
+ruff check src tests
+LINT_EXIT=$?
+
+echo "Running ruff format check..."
+ruff format --check src tests
+FORMAT_EXIT=$?
+
+if [ $LINT_EXIT -ne 0 ] || [ $FORMAT_EXIT -ne 0 ]; then
+  echo ""
+  echo "Pre-commit check failed."
+  echo "  Fix lint errors:   ruff check --fix src tests"
+  echo "  Fix formatting:    ruff format src tests"
+  exit 1
+fi
+
+echo "Pre-commit checks passed."
