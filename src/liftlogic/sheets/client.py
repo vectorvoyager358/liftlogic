@@ -82,6 +82,12 @@ class SheetsClient:
                 return sheet["properties"]["sheetId"]
         raise ValueError(f"Sheet not found: {sheet_name}")
 
+    def clear_values(self, spreadsheet_id: str, range_name: str) -> None:
+        self._sheets.spreadsheets().values().clear(
+            spreadsheetId=spreadsheet_id,
+            range=range_name,
+        ).execute()
+
     def delete_rows(
         self,
         spreadsheet_id: str,

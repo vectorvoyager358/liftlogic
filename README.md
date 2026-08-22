@@ -2,8 +2,6 @@
 
 An AI-powered workout tracking, analytics, and coaching system built around Google Sheets.
 
-**[solution-document.md](solution-document.md) is the source of truth** for architecture, naming, sheet structure, data model, phases, and MVP scope.
-
 ## Backend-first development
 
 LiftLogic prioritizes **data model integrity, validation, and repository APIs** over UI polish. Google Sheets is the current UI; `Workout_Log` is canonical. All writes go through validated repository methods. The UI can be redesigned freely once the backend is solid.

@@ -25,7 +25,6 @@ HIDDEN_SHEETS = [
     WORKOUT_LOG_SHEET,
     EXERCISES_SHEET,
     SETTINGS_SHEET,
-    ANALYTICS_SHEET,
     AI_INSIGHTS_SHEET,
 ]
 
@@ -56,6 +55,18 @@ SETTINGS_ROWS = [
     ("weight_unit", "lb"),
     ("spreadsheet_version", "0.1.0"),
 ]
+
+# Dashboard cell that liftlogic refresh writes the last-refreshed timestamp to
+DASHBOARD_LAST_REFRESHED_CELL = "Dashboard!A2"
+
+# Analytics tab section headers and table headers (used for conditional formatting)
+ANALYTICS_SECTION_NAMES = [
+    "OVERALL STATISTICS",
+    "PERSONAL RECORDS",
+    "MUSCLE FREQUENCY",
+    "EXERCISE TRENDS",
+]
+ANALYTICS_TABLE_HEADERS = ["Metric", "Exercise", "Muscle"]
 
 HEADER_ROW = 1
 DATA_START_ROW = 2

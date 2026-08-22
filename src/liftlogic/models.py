@@ -38,3 +38,4 @@ class PersonalRecord:
     exercise: str
     weight: float
     workout_date: date
+    unit: str = "lb"  # metric for the logged value (lb, steps, minutes, miles, …)

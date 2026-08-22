@@ -70,3 +70,37 @@ def test_invalid_muscle_is_error():
     )
     assert not result.valid
     assert any(issue.code == "invalid_muscle" for issue in result.errors)
+
+
+def test_steps_with_zero_is_allowed():
+    """Steps is a non-lb metric so zero should not raise zero_weight error."""
+    result = validate_workout_input(
+        workout_date="2026-08-20",
+        muscle="Cardio",
+        exercise="Steps",
+        weight=0,
+    )
+    assert result.valid
+    assert not any(issue.code == "zero_weight" for issue in result.errors)
+
+
+def test_steps_with_count_is_valid():
+    result = validate_workout_input(
+        workout_date="2026-08-20",
+        muscle="Cardio",
+        exercise="Steps",
+        weight=8500,
+    )
+    assert result.valid
+    assert result.input is not None
+    assert result.input.weight == 8500
+
+
+def test_treadmill_with_minutes_is_valid():
+    result = validate_workout_input(
+        workout_date="2026-08-20",
+        muscle="Cardio",
+        exercise="Treadmill Run",
+        weight=30,
+    )
+    assert result.valid
