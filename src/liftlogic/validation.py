@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from liftlogic.constants import MUSCLE_TABS
-from liftlogic.exercises import exercise_by_name
+from liftlogic.exercises import exercise_by_name, exercise_metric
 from liftlogic.models import WorkoutEntry, WorkoutInput
 from liftlogic.parsing import parse_date, parse_weight
 
@@ -74,14 +74,20 @@ def validate_workout_input(
         issues.append(ValidationIssue("weight", "required", "Weight must be a number"))
     elif parsed_weight < 0:
         issues.append(ValidationIssue("weight", "negative", "Weight cannot be negative"))
-    elif muscle_clean in MUSCLE_TABS and muscle_clean != "Cardio" and parsed_weight == 0:
-        issues.append(
-            ValidationIssue(
-                "weight",
-                "zero_weight",
-                "Weight must be greater than zero for strength exercises",
+    elif parsed_weight == 0:
+        # Zero is only valid for exercises whose metric is not weight-based (lb).
+        # For unknown exercises fall back to muscle group: Cardio allows zero.
+        metric = exercise_metric(exercise_clean) if exercise_clean else "lb"
+        is_weight_based = metric == "lb"
+        is_cardio_muscle = muscle_clean == "Cardio"
+        if is_weight_based and not is_cardio_muscle:
+            issues.append(
+                ValidationIssue(
+                    "weight",
+                    "zero_weight",
+                    "Weight must be greater than zero for strength exercises",
+                )
             )
-        )
 
     notes_clean = notes.strip() if notes else ""
     if len(notes_clean) > MAX_NOTES_LENGTH:

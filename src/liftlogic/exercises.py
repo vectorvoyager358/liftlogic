@@ -12,6 +12,7 @@ class Exercise:
     primary_muscle: str
     secondary_muscle: str
     equipment: str
+    metric: str = "lb"  # unit for the value logged in the Weight column
 
 
 DEFAULT_EXERCISES: tuple[Exercise, ...] = (
@@ -34,9 +35,12 @@ DEFAULT_EXERCISES: tuple[Exercise, ...] = (
     Exercise("LG002", "Romanian Deadlift", "Legs", "Back", "Barbell"),
     Exercise("LG003", "Leg Press", "Legs", "", "Machine"),
     Exercise("LG004", "Walking Lunge", "Legs", "Core", "Dumbbell"),
-    Exercise("CD001", "Treadmill Run", "Cardio", "", "Machine"),
-    Exercise("CD002", "Stationary Bike", "Cardio", "", "Machine"),
-    Exercise("CD003", "Rowing Machine", "Cardio", "Back", "Machine"),
+    Exercise("CD001", "Treadmill Run", "Cardio", "", "Machine", metric="minutes"),
+    Exercise("CD002", "Stationary Bike", "Cardio", "", "Machine", metric="minutes"),
+    Exercise("CD003", "Rowing Machine", "Cardio", "Back", "Machine", metric="minutes"),
+    Exercise("CD004", "Steps", "Cardio", "", "Bodyweight", metric="steps"),
+    Exercise("CD005", "Jump Rope", "Cardio", "", "Bodyweight", metric="minutes"),
+    Exercise("CD006", "Elliptical", "Cardio", "", "Machine", metric="minutes"),
 )
 
 
@@ -50,6 +54,15 @@ def exercise_by_name(name: str) -> Exercise | None:
         if exercise.name.casefold() == normalized:
             return exercise
     return None
+
+
+def exercise_metric(name_or_id: str) -> str:
+    """Return the unit metric for an exercise name or ID. Defaults to 'lb'."""
+    normalized = name_or_id.strip().casefold()
+    for ex in DEFAULT_EXERCISES:
+        if ex.name.casefold() == normalized or ex.exercise_id.casefold() == normalized:
+            return ex.metric
+    return "lb"
 
 
 def exercise_rows() -> list[list[str]]:
