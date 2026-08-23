@@ -56,6 +56,22 @@ def exercise_by_name(name: str) -> Exercise | None:
     return None
 
 
+def exercise_by_id(exercise_id: str) -> Exercise | None:
+    normalized = exercise_id.strip().casefold()
+    for exercise in DEFAULT_EXERCISES:
+        if exercise.exercise_id.casefold() == normalized:
+            return exercise
+    return None
+
+
+def exercise_display_name(name_or_id: str) -> str:
+    """Resolve an exercise ID to its catalog name, or return the name as-is."""
+    match = exercise_by_id(name_or_id)
+    if match:
+        return match.name
+    return name_or_id
+
+
 def exercise_metric(name_or_id: str) -> str:
     """Return the unit metric for an exercise name or ID. Defaults to 'lb'."""
     normalized = name_or_id.strip().casefold()

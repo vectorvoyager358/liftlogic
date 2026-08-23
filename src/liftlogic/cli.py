@@ -6,6 +6,10 @@ import argparse
 import json
 from pathlib import Path
 
+from liftlogic.ai import ask_question, generate_insights, write_ai_insights_tab
+from liftlogic.muscle_context import detect_muscle_in_query
+from liftlogic.rag import search_workout_knowledge
+from liftlogic.constants import AI_INSIGHTS_SHEET
 from liftlogic.dashboard import format_stats, refresh_analytics_tab
 from liftlogic.reconcile import reconcile_workout_log
 from liftlogic.repository import WorkoutRepository
@@ -60,6 +64,34 @@ def main() -> None:
     format_parser.add_argument("--credentials-dir", default="credentials")
     format_parser.add_argument("--spreadsheet-id", help="Override spreadsheet ID")
 
+    ask_parser = subparsers.add_parser(
+        "ask", help="Ask a natural-language question about your workouts"
+    )
+    ask_parser.add_argument("question", help="Your question in quotes")
+    ask_parser.add_argument("--credentials-dir", default="credentials")
+    ask_parser.add_argument("--spreadsheet-id", help="Override spreadsheet ID")
+
+    insights_parser = subparsers.add_parser(
+        "insights",
+        help="Generate AI coaching summary and write to AI_Insights tab",
+    )
+    insights_parser.add_argument("--credentials-dir", default="credentials")
+    insights_parser.add_argument("--spreadsheet-id", help="Override spreadsheet ID")
+    insights_parser.add_argument(
+        "--print-only",
+        action="store_true",
+        help="Print insights to terminal without writing to the sheet",
+    )
+
+    search_parser = subparsers.add_parser(
+        "search-notes",
+        help="Search workout notes by keyword (RAG retrieval preview)",
+    )
+    search_parser.add_argument("query", help="Search terms in quotes")
+    search_parser.add_argument("--credentials-dir", default="credentials")
+    search_parser.add_argument("--spreadsheet-id", help="Override spreadsheet ID")
+    search_parser.add_argument("--limit", type=int, default=5, help="Max results (default 5)")
+
     args = parser.parse_args()
 
     if args.command == "setup":
@@ -74,6 +106,12 @@ def main() -> None:
         _cmd_refresh(args)
     elif args.command == "format":
         _cmd_format(args)
+    elif args.command == "ask":
+        _cmd_ask(args)
+    elif args.command == "insights":
+        _cmd_insights(args)
+    elif args.command == "search-notes":
+        _cmd_search_notes(args)
 
 
 def _load_spreadsheet_id(args: argparse.Namespace) -> str:
@@ -194,6 +232,56 @@ def _cmd_format(args: argparse.Namespace) -> None:
     format_analytics_tab(client, spreadsheet_id)
 
     print("Done. Open the sheet to see the updated layout.")
+
+
+def _cmd_ask(args: argparse.Namespace) -> None:
+    client = SheetsClient.from_oauth(args.credentials_dir)
+    spreadsheet_id = _load_spreadsheet_id(args)
+    repo = WorkoutRepository(client, spreadsheet_id)
+    entries = repo.get_workouts()
+
+    answer = ask_question(args.question, entries, credentials_dir=args.credentials_dir)
+    print(answer)
+
+
+def _cmd_insights(args: argparse.Namespace) -> None:
+    client = SheetsClient.from_oauth(args.credentials_dir)
+    spreadsheet_id = _load_spreadsheet_id(args)
+    repo = WorkoutRepository(client, spreadsheet_id)
+    entries = repo.get_workouts()
+
+    insights = generate_insights(entries, credentials_dir=args.credentials_dir)
+    print(insights)
+
+    if not args.print_only and entries:
+        write_ai_insights_tab(client, spreadsheet_id, insights)
+        print(f"\nInsights written to {AI_INSIGHTS_SHEET} tab.")
+
+
+def _cmd_search_notes(args: argparse.Namespace) -> None:
+    client = SheetsClient.from_oauth(args.credentials_dir)
+    spreadsheet_id = _load_spreadsheet_id(args)
+    repo = WorkoutRepository(client, spreadsheet_id)
+    entries = repo.get_workouts()
+
+    hits = search_workout_knowledge(
+        args.query,
+        entries,
+        limit=args.limit,
+        muscle_tab=detect_muscle_in_query(args.query),
+    )
+    if not hits:
+        print("No matching entries found.")
+        return
+
+    print(f"Found {len(hits)} result(s) for: {args.query!r}\n")
+    for hit in hits:
+        print(f"  [{hit.workout_date}] {hit.muscle} — {hit.exercise}")
+        if hit.note:
+            print(f"  {hit.note}")
+        else:
+            print(f"  {hit.weight:g} {hit.unit} (no notes)")
+        print(f"  (score: {hit.score:.1f}, log: {hit.log_id})\n")
 
 
 if __name__ == "__main__":

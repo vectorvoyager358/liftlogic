@@ -67,6 +67,14 @@ liftlogic reconcile     # compare muscle tabs vs Workout_Log for drift
 | `liftlogic setup --write-config` | Also save the spreadsheet ID to `credentials/spreadsheet.json` |
 | `liftlogic validate` | Validate every row in Workout_Log |
 | `liftlogic reconcile` | Detect drift between muscle tabs and Workout_Log |
+| `liftlogic stats` | Print workout stats to the terminal |
+| `liftlogic refresh` | Write computed analytics to the Analytics tab |
+| `liftlogic format` | Apply visual formatting to Dashboard, muscle tabs, and Analytics |
+| `liftlogic ask "…"` | Ask a natural-language question (requires NVIDIA NIM) |
+| `liftlogic insights` | Generate AI coaching summary and write to AI_Insights tab |
+| `liftlogic search-notes "…"` | Search workout notes by keyword (RAG preview) |
+
+Install AI dependencies: `pip install -e ".[ai]"`. Configure `credentials/nim.json` — see [credentials/README.md](credentials/README.md).
 
 ## Project structure
 
@@ -77,11 +85,13 @@ src/liftlogic/
   validation.py     # Authoritative field validation rules
   reconcile.py      # Muscle tab vs Workout_Log drift detection
   repository.py     # get/add/update/delete/upsert workout data
-  analytics.py      # PR and summary calculations
+  analytics.py      # PR, streaks, trends, plateau detection
+  dashboard.py      # Analytics tab refresh and terminal stats
+  ai.py             # NVIDIA NIM coach (ask / insights)
   exercises.py      # Seed exercise catalog and lookups
   setup.py          # setupSpreadsheet() — creates and configures the workbook
   sheets/client.py  # Google Sheets API wrapper and OAuth
-  cli.py            # liftlogic CLI (setup / validate / reconcile)
+  cli.py            # liftlogic CLI
 apps-script/
   Code.gs           # Muscle tab → Workout_Log sync on edit
 tests/
