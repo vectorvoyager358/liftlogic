@@ -3,6 +3,7 @@
 from liftlogic.exercises import (
     DEFAULT_EXERCISES,
     exercise_by_name,
+    exercise_display_name,
     exercise_metric,
     exercises_for_muscle,
 )
@@ -42,6 +43,11 @@ def test_strength_exercise_metric_is_lb():
 def test_steps_exercise_metric_is_steps():
     assert exercise_metric("Steps") == "steps"
     assert exercise_metric("CD004") == "steps"
+
+
+def test_exercise_display_name_resolves_id():
+    assert exercise_display_name("BK001") == "Lat Pulldown"
+    assert exercise_display_name("Lat Pulldown") == "Lat Pulldown"
 
 
 def test_treadmill_metric_is_minutes():

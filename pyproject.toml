@@ -16,6 +16,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+ai = [
+    "openai>=1.54.0",
+]
 dev = [
     "pytest==8.4.2",
     "ruff==0.14.1",
