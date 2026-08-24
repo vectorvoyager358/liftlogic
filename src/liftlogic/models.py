@@ -39,3 +39,30 @@ class PersonalRecord:
     weight: float
     workout_date: date
     unit: str = "lb"  # metric for the logged value (lb, steps, minutes, miles, …)
+
+
+@dataclass(frozen=True)
+class Goal:
+    goal_id: str
+    goal_type: str  # Exercise | Muscle
+    exercise: str
+    muscle: str
+    target: float
+    unit: str
+    target_date: date | None
+    status: str
+    notes: str
+
+
+@dataclass(frozen=True)
+class GoalProgress:
+    goal_id: str
+    goal_type: str
+    label: str
+    target: float
+    current: float
+    unit: str
+    progress_pct: float
+    status: str  # completed | on_track | behind | paused
+    target_date: date | None
+    detail: str

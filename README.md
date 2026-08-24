@@ -41,15 +41,43 @@ See [credentials/README.md](credentials/README.md) for details.
 liftlogic setup --write-config
 ```
 
-### 4. Install Apps Script sync
+### 4. Install Apps Script (sync + Dashboard + HTML tracker)
 
 1. Open your spreadsheet → **Extensions → Apps Script**
-2. Paste [apps-script/Code.gs](apps-script/Code.gs)
-3. Save and run `setupTriggers` once (authorize when prompted)
+2. Replace `Code.gs` with [apps-script/Code.gs](apps-script/Code.gs)
+3. Add an HTML file named **`Sidebar`** (File → New → HTML) and paste [apps-script/Sidebar.html](apps-script/Sidebar.html)
+4. Save and run `setupTriggers` once (authorize when prompted)
+5. Reload the spreadsheet → **LiftLogic → Open Workout Tracker**
+
+The sidebar provides the premium tracker UI: muscle filter, Summary/Log toggle, search, exercise filter, KPI cards, and a styled data table. Filter changes sync back to the Dashboard sheet automatically.
+
+**Dashboard sheet controls** (row 3) mirror the sidebar filters:
+
+| Control | Cell | Purpose |
+| ------- | ---- | ------- |
+| MUSCLE | B3 | Filter by muscle group or All |
+| VIEW | D3 | **Summary** (best per exercise) or **Workout Log** (all entries) |
+| SEARCH | F3 | Filter by exercise name or notes (hover the cell for a hint; leave blank for no filter) |
+| EXERCISE | I3 | Filter to one exercise |
+
+Use **LiftLogic → Refresh Dashboard** after bulk edits, or change any filter to refresh automatically.
 
 ### 5. Log a workout
 
-Open any muscle tab (e.g. **Chest**), enter Date, Exercise (dropdown), Weight, and Notes.
+Open any muscle tab (e.g. **Chest**), enter Date, Exercise (dropdown), Weight/metric, and Notes.
+
+**Exercise catalog sync**
+
+| Action | Result |
+|--------|--------|
+| Add exercise on muscle tab / sidebar **Other…** | Added to **Exercises** + dropdowns |
+| Rename on **Exercises** sheet (name column) | Updates that name on muscle tabs, Workout_Log, Goals + dropdowns. Refresh the sidebar to see it. |
+| Delete / clear a **custom** exercise on a muscle tab (last use) | Removed from **Exercises** + dropdowns (built-in seed exercises are kept) |
+| Delete row on **Exercises** sheet | Removed from muscle-tab + sidebar dropdowns (after refresh). Old workout logs are kept. |
+| Delete a workout row on a muscle tab | Only that log entry is removed — exercise stays in **Exercises** |
+| Re-import typed names | **LiftLogic → Import Exercises from Muscle Tabs** |
+
+Sidebar: click **Refresh** (or reopen it) after changing the Exercises sheet so its dropdown reloads.
 The row is synced to `Workout_Log` automatically via Apps Script.
 
 ### 6. Data quality checks
@@ -73,6 +101,7 @@ liftlogic reconcile     # compare muscle tabs vs Workout_Log for drift
 | `liftlogic ask "…"` | Ask a natural-language question (requires NVIDIA NIM) |
 | `liftlogic insights` | Generate AI coaching summary and write to AI_Insights tab |
 | `liftlogic search-notes "…"` | Search workout notes by keyword (RAG preview) |
+| `liftlogic goals` | Show progress toward active goals |
 
 Install AI dependencies: `pip install -e ".[ai]"`. Configure `credentials/nim.json` — see [credentials/README.md](credentials/README.md).
 
@@ -93,7 +122,8 @@ src/liftlogic/
   sheets/client.py  # Google Sheets API wrapper and OAuth
   cli.py            # liftlogic CLI
 apps-script/
-  Code.gs           # Muscle tab → Workout_Log sync on edit
+  Code.gs           # Muscle tab sync + Dashboard refresh + sidebar API
+  Sidebar.html      # Premium HTML workout tracker sidebar
 tests/
   test_parsing.py
   test_validation.py

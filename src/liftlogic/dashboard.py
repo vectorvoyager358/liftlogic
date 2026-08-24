@@ -52,7 +52,7 @@ def refresh_analytics_tab(
     client.update_values(spreadsheet_id, f"{ANALYTICS_SHEET}!A1", rows)
 
     # Stamp the Dashboard subtitle with the refresh timestamp
-    timestamp = f"Analytics last refreshed: {today}  —  {len(entries)} log entries"
+    timestamp = f"Live · synced from muscle tabs · refreshed {today}  ·  {len(entries)} log entries"
     client.update_values(
         spreadsheet_id,
         DASHBOARD_LAST_REFRESHED_CELL,

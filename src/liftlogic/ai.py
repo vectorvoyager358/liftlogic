@@ -21,35 +21,19 @@ from liftlogic.analytics import (
 from liftlogic.constants import AI_INSIGHTS_SHEET, MUSCLE_TABS
 from liftlogic.dashboard import compute_analytics
 from liftlogic.exercises import exercise_display_name, exercise_metric
-from liftlogic.models import WorkoutEntry
+from liftlogic.goals import compute_all_goal_progress
+from liftlogic.models import Goal, WorkoutEntry
 from liftlogic.muscle_context import (
     detect_muscle_in_query,
     entries_for_muscle_tab,
     find_mislogged_entries,
 )
+from liftlogic.prompts import INSIGHTS_PROMPT, SYSTEM_PROMPT
 from liftlogic.rag import looks_like_note_question, search_workout_knowledge
 from liftlogic.sheets.client import SheetsClient
 
 NIM_BASE_URL = "https://integrate.api.nvidia.com/v1"
 DEFAULT_NIM_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
-
-SYSTEM_PROMPT = """You are LiftLogic, a knowledgeable and encouraging fitness coach.
-
-You receive structured workout analytics computed by a backend engine — never raw spreadsheet rows.
-When retrieved_notes are provided, use them to answer questions about what the user wrote in their logs.
-Use only the provided context to answer. If data is missing, say so clearly.
-
-Guidelines:
-- Be concise and actionable (2–4 short paragraphs unless the user asks for detail).
-- Reference specific exercises, weights/units, dates, and trends from the context.
-- Do not invent numbers or workouts not present in the context.
-- If retrieved_notes entries have no "note" field, they are exercise/muscle matches only — do not describe note content for them.
-- When muscle_scope is provided, list exercises ONLY from muscle_scope.workouts (the tab where they were logged). Never include exercises from other tabs, even if they work the same muscle secondarily or appear in global personal_records.
-- When the user asks what exercises they did, list every row in muscle_scope.workouts — do not collapse or deduplicate by exercise name; include multiple entries on the same date if present.
-- If mislogged_entries are present, call them out as possible logging mistakes and tell the user which tab each entry belongs on.
-- Respond with your final answer only — no reasoning steps, no thinking process, no bullet analysis.
-- For medical or injury questions, recommend consulting a professional.
-"""
 
 
 @dataclass(frozen=True)
@@ -126,6 +110,7 @@ def build_workout_context(
     as_of: date | None = None,
     *,
     question: str | None = None,
+    goals: list[Goal] | None = None,
 ) -> dict[str, Any]:
     """Serialize pre-computed analytics into a JSON-safe context for the LLM."""
     today = as_of or date.today()
@@ -244,6 +229,22 @@ def build_workout_context(
         context["muscle_scope"] = muscle_scope
     if mislogged_entries:
         context["mislogged_entries"] = mislogged_entries
+    if goals:
+        context["goal_progress"] = [
+            {
+                "goal_id": progress.goal_id,
+                "type": progress.goal_type,
+                "label": progress.label,
+                "current": progress.current,
+                "target": progress.target,
+                "unit": progress.unit,
+                "progress_pct": round(progress.progress_pct, 1),
+                "status": progress.status,
+                "target_date": str(progress.target_date) if progress.target_date else "",
+                "detail": progress.detail,
+            }
+            for progress in compute_all_goal_progress(goals, entries, as_of=today)
+        ]
     return context
 
 
@@ -253,13 +254,14 @@ def ask_question(
     config: NimConfig | None = None,
     credentials_dir: str | Path = "credentials",
     as_of: date | None = None,
+    goals: list[Goal] | None = None,
 ) -> str:
     """Answer a natural-language question using structured workout analytics."""
     if not entries:
         return "No workout data found. Log some workouts first, then try again."
 
     cfg = config or load_nim_config(credentials_dir)
-    context = build_workout_context(entries, as_of=as_of, question=question.strip())
+    context = build_workout_context(entries, as_of=as_of, question=question.strip(), goals=goals)
     context_json = json.dumps(context, indent=2)
 
     messages = [
@@ -279,23 +281,17 @@ def generate_insights(
     config: NimConfig | None = None,
     credentials_dir: str | Path = "credentials",
     as_of: date | None = None,
+    goals: list[Goal] | None = None,
 ) -> str:
     """Generate a full coaching summary from structured analytics."""
     if not entries:
         return "No workout data found. Log some workouts first, then try again."
 
     cfg = config or load_nim_config(credentials_dir)
-    context = build_workout_context(entries, as_of=as_of)
+    context = build_workout_context(entries, as_of=as_of, goals=goals)
     context_json = json.dumps(context, indent=2)
 
-    prompt = (
-        "Based on the workout analytics context below, write a coaching summary with:\n"
-        "1. Overall training consistency (streak, frequency this week/month)\n"
-        "2. Highlights — recent PRs and improving exercises\n"
-        "3. Areas needing attention — plateaus, declining trends, neglected muscles\n"
-        "4. 2–3 specific, actionable recommendations for the next 1–2 weeks\n\n"
-        f"Workout analytics context (JSON):\n{context_json}"
-    )
+    prompt = INSIGHTS_PROMPT.format(context_json=context_json)
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
