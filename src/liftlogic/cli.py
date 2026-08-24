@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from liftlogic.ai import ask_question, generate_insights, write_ai_insights_tab
+from liftlogic.goals import format_goal_progress, get_goals
 from liftlogic.muscle_context import detect_muscle_in_query
 from liftlogic.rag import search_workout_knowledge
 from liftlogic.constants import AI_INSIGHTS_SHEET
@@ -14,8 +15,11 @@ from liftlogic.dashboard import format_stats, refresh_analytics_tab
 from liftlogic.reconcile import reconcile_workout_log
 from liftlogic.repository import WorkoutRepository
 from liftlogic.setup import (
+    create_goals_tab,
+    create_sheets,
     format_analytics_tab,
     format_dashboard,
+    format_goals_tab,
     format_workout_tabs,
     setup_spreadsheet,
 )
@@ -92,6 +96,10 @@ def main() -> None:
     search_parser.add_argument("--spreadsheet-id", help="Override spreadsheet ID")
     search_parser.add_argument("--limit", type=int, default=5, help="Max results (default 5)")
 
+    goals_parser = subparsers.add_parser("goals", help="Show progress toward active goals")
+    goals_parser.add_argument("--credentials-dir", default="credentials")
+    goals_parser.add_argument("--spreadsheet-id", help="Override spreadsheet ID")
+
     args = parser.parse_args()
 
     if args.command == "setup":
@@ -112,6 +120,8 @@ def main() -> None:
         _cmd_insights(args)
     elif args.command == "search-notes":
         _cmd_search_notes(args)
+    elif args.command == "goals":
+        _cmd_goals(args)
 
 
 def _load_spreadsheet_id(args: argparse.Namespace) -> str:
@@ -228,6 +238,11 @@ def _cmd_format(args: argparse.Namespace) -> None:
     print("Formatting muscle tabs…")
     format_workout_tabs(client, spreadsheet_id)
 
+    print("Ensuring Goals tab…")
+    create_sheets(client, spreadsheet_id)
+    create_goals_tab(client, spreadsheet_id)
+    format_goals_tab(client, spreadsheet_id)
+
     print("Formatting Analytics tab…")
     format_analytics_tab(client, spreadsheet_id)
 
@@ -239,8 +254,9 @@ def _cmd_ask(args: argparse.Namespace) -> None:
     spreadsheet_id = _load_spreadsheet_id(args)
     repo = WorkoutRepository(client, spreadsheet_id)
     entries = repo.get_workouts()
+    goals = get_goals(client, spreadsheet_id)
 
-    answer = ask_question(args.question, entries, credentials_dir=args.credentials_dir)
+    answer = ask_question(args.question, entries, credentials_dir=args.credentials_dir, goals=goals)
     print(answer)
 
 
@@ -249,8 +265,9 @@ def _cmd_insights(args: argparse.Namespace) -> None:
     spreadsheet_id = _load_spreadsheet_id(args)
     repo = WorkoutRepository(client, spreadsheet_id)
     entries = repo.get_workouts()
+    goals = get_goals(client, spreadsheet_id)
 
-    insights = generate_insights(entries, credentials_dir=args.credentials_dir)
+    insights = generate_insights(entries, credentials_dir=args.credentials_dir, goals=goals)
     print(insights)
 
     if not args.print_only and entries:
@@ -282,6 +299,30 @@ def _cmd_search_notes(args: argparse.Namespace) -> None:
         else:
             print(f"  {hit.weight:g} {hit.unit} (no notes)")
         print(f"  (score: {hit.score:.1f}, log: {hit.log_id})\n")
+
+
+def _cmd_goals(args: argparse.Namespace) -> None:
+    from liftlogic.goals import compute_all_goal_progress
+
+    client = SheetsClient.from_oauth(args.credentials_dir)
+    spreadsheet_id = _load_spreadsheet_id(args)
+    repo = WorkoutRepository(client, spreadsheet_id)
+    entries = repo.get_workouts()
+    goals = get_goals(client, spreadsheet_id)
+
+    if not goals:
+        print("No goals found. Add rows to the Goals tab in your spreadsheet.")
+        return
+
+    progress_items = compute_all_goal_progress(goals, entries)
+    active = [goal for goal in goals if goal.status.casefold() != "paused"]
+    if not active:
+        print("No active goals. Set Status to Active on the Goals tab.")
+        return
+
+    print(f"Tracking {len(active)} active goal(s):\n")
+    for progress in progress_items:
+        print(f"  {format_goal_progress(progress)}")
 
 
 if __name__ == "__main__":

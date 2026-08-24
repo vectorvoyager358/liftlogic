@@ -18,7 +18,7 @@ from liftlogic.ai import (
     load_nim_config,
     write_ai_insights_tab,
 )
-from liftlogic.models import WorkoutEntry
+from liftlogic.models import Goal, WorkoutEntry
 
 
 def _entry(
@@ -150,6 +150,28 @@ class TestBuildWorkoutContext:
         scoped_exercises = {w["exercise"] for w in ctx["muscle_scope"]["workouts"]}
         assert scoped_exercises == {"Lateral Raise"}
         assert "T-Bar" not in {pr["exercise"] for pr in ctx["personal_records"]}
+
+    def test_goal_progress_in_context(self):
+        entries = [
+            _entry("Barbell Bench Press", 185, date(2026, 8, 20)),
+        ]
+        goals = [
+            Goal(
+                goal_id="G001",
+                goal_type="Exercise",
+                exercise="Barbell Bench Press",
+                muscle="",
+                target=225,
+                unit="lb",
+                target_date=date(2026, 12, 31),
+                status="Active",
+                notes="",
+            )
+        ]
+        ctx = build_workout_context(entries, as_of=date(2026, 8, 21), goals=goals)
+        assert len(ctx["goal_progress"]) == 1
+        assert ctx["goal_progress"][0]["label"] == "Barbell Bench Press"
+        assert ctx["goal_progress"][0]["current"] == 185
 
 
 class TestSanitizeResponse:

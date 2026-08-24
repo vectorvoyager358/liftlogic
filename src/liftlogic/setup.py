@@ -10,9 +10,17 @@ from liftlogic.constants import (
     ANALYTICS_SECTION_NAMES,
     ANALYTICS_TABLE_HEADERS,
     DASHBOARD_SHEET,
+    DASHBOARD_SEARCH_HINT,
     DATA_START_ROW,
+    DASHBOARD_MUSCLE_FILTER_OPTIONS,
+    DASHBOARD_VIEW_OPTIONS,
     EXERCISE_COLUMNS,
     EXERCISES_SHEET,
+    GOAL_COLUMNS,
+    GOAL_STATUS_OPTIONS,
+    GOAL_TYPES,
+    GOAL_UNITS,
+    GOALS_SHEET,
     HIDDEN_SHEETS,
     MUSCLE_TABS,
     SETTINGS_ROWS,
@@ -22,24 +30,32 @@ from liftlogic.constants import (
     WORKOUT_LOG_COLUMNS,
     WORKOUT_LOG_SHEET,
 )
-from liftlogic.exercises import exercise_rows, exercises_for_muscle
+from liftlogic.exercises import DEFAULT_EXERCISES, exercise_rows, exercises_for_muscle
 from liftlogic.sheets.client import SheetsClient
 
 # ---------------------------------------------------------------------------
-# Color palette
+# Color palette — premium slate + emerald accent
 # ---------------------------------------------------------------------------
 
-_TITLE_BG = "#1565C0"  # deep blue
+_TITLE_BG = "#0F172A"  # slate-900
 _TITLE_FG = "#FFFFFF"
-_SUBTITLE_BG = "#1976D2"  # medium blue
-_SUBTITLE_FG = "#BBDEFB"  # light blue text
-_SECTION_BG = "#283593"  # darker blue for section headers
+_SUBTITLE_BG = "#1E293B"  # slate-800
+_SUBTITLE_FG = "#94A3B8"  # slate-400
+_ACCENT_BG = "#10B981"  # emerald-500
+_ACCENT_FG = "#FFFFFF"
+_SECTION_BG = "#0F172A"
 _SECTION_FG = "#FFFFFF"
-_TABLE_HDR_BG = "#E8EAF6"  # very light indigo
-_TABLE_HDR_FG = "#1A237E"  # dark navy text
-_STAT_LABEL_BG = "#F5F5F5"  # near-white gray
+_TABLE_HDR_BG = "#0F172A"
+_TABLE_HDR_FG = "#FFFFFF"
+_KPI_LABEL_BG = "#F1F5F9"  # slate-100
+_KPI_LABEL_FG = "#64748B"  # slate-500
+_KPI_VALUE_BG = "#FFFFFF"
+_KPI_VALUE_FG = "#0F172A"  # slate-900
+_STAT_LABEL_BG = "#F8FAFC"
 _STAT_VALUE_BG = "#FFFFFF"
-_ALT_ROW_BG = "#FAFAFA"
+_ALT_ROW_BG = "#F8FAFC"
+_BORDER_COLOR = "#E2E8F0"
+_SHEET_BG = "#FFFFFF"
 
 # Muscle tab colors: (tab hex, header-row bg hex, header text hex)
 _MUSCLE_COLORS: dict[str, tuple[str, str, str]] = {
@@ -72,9 +88,11 @@ def setup_spreadsheet(
     create_settings(client, spreadsheet_id)
     create_workout_log(client, spreadsheet_id)
     create_workout_tabs(client, spreadsheet_id)
+    create_goals_tab(client, spreadsheet_id)
     format_dashboard(client, spreadsheet_id)
     create_analytics_tab(client, spreadsheet_id)
     format_workout_tabs(client, spreadsheet_id)
+    format_goals_tab(client, spreadsheet_id)
     format_analytics_tab(client, spreadsheet_id)
     hide_internal_sheets(client, spreadsheet_id)
     return spreadsheet_id
@@ -86,17 +104,21 @@ def format_dashboard(client: SheetsClient, spreadsheet_id: str) -> None:
     Safe to run on existing sheets — only the Dashboard tab is touched.
     Workout data in muscle tabs is never modified.
     """
+    _unmerge_dashboard(client, spreadsheet_id)
     client.clear_values(spreadsheet_id, f"{DASHBOARD_SHEET}!A:Z")
     _write_dashboard_content(client, spreadsheet_id)
     _apply_dashboard_formatting(client, spreadsheet_id)
+    _create_dashboard_validations(client, spreadsheet_id)
 
 
 def format_workout_tabs(client: SheetsClient, spreadsheet_id: str) -> None:
     """Apply colours and formatting to every muscle tab.
 
     Only changes visual formatting — never overwrites workout data.
+    Reapplies exercise dropdowns from the Exercises sheet (same list as sidebar).
     """
     requests: list[dict[str, Any]] = []
+    exercise_names_by_muscle = _exercise_names_by_muscle_from_sheet(client, spreadsheet_id)
 
     for muscle in MUSCLE_TABS:
         colors = _MUSCLE_COLORS.get(muscle)
@@ -153,7 +175,44 @@ def format_workout_tabs(client: SheetsClient, spreadsheet_id: str) -> None:
         for col_idx, px in [(0, 100), (1, 200), (2, 90), (3, 220)]:
             requests.append(_col_width(sheet_id, col_idx, px))
 
+        # Date column: calendar picker + yyyy-mm-dd display
+        requests.append(_date_format_request(sheet_id, column_index=0))
+        requests.append(_date_validation_request(sheet_id, column_index=0))
+
+        # Exercise dropdown — same catalog as Exercises sheet / sidebar
+        exercise_names = exercise_names_by_muscle.get(muscle) or [
+            ex.name for ex in exercises_for_muscle(muscle)
+        ]
+        if exercise_names:
+            requests.append(
+                _dropdown_validation_request(
+                    sheet_id=sheet_id,
+                    column_index=1,
+                    options=exercise_names,
+                )
+            )
+
     client.batch_update(spreadsheet_id, requests)
+
+
+def _exercise_names_by_muscle_from_sheet(
+    client: SheetsClient, spreadsheet_id: str
+) -> dict[str, list[str]]:
+    """Read Exercises sheet; fall back to seed catalog per muscle if empty."""
+    grouped: dict[str, list[str]] = {m: [] for m in MUSCLE_TABS}
+    rows = client.get_values(spreadsheet_id, f"{EXERCISES_SHEET}!A2:C")
+    for row in rows:
+        padded = list(row) + [""] * 3
+        name = str(padded[1]).strip()
+        muscle = str(padded[2]).strip()
+        if name and muscle in grouped:
+            grouped[muscle].append(name)
+    for muscle in MUSCLE_TABS:
+        if grouped[muscle]:
+            grouped[muscle] = sorted(set(grouped[muscle]))
+        else:
+            grouped[muscle] = [ex.name for ex in exercises_for_muscle(muscle)]
+    return grouped
 
 
 def format_analytics_tab(client: SheetsClient, spreadsheet_id: str) -> None:
@@ -317,7 +376,7 @@ def create_sheets(client: SheetsClient, spreadsheet_id: str) -> None:
     existing = {sheet["properties"]["title"] for sheet in meta.get("sheets", [])}
 
     requests: list[dict[str, Any]] = []
-    for sheet_name in [DASHBOARD_SHEET, *MUSCLE_TABS, *HIDDEN_SHEETS]:
+    for sheet_name in [DASHBOARD_SHEET, *MUSCLE_TABS, GOALS_SHEET, *HIDDEN_SHEETS]:
         if sheet_name not in existing:
             requests.append({"addSheet": {"properties": {"title": sheet_name}}})
 
@@ -344,6 +403,7 @@ def create_workout_log(client: SheetsClient, spreadsheet_id: str) -> None:
 
 def create_workout_tabs(client: SheetsClient, spreadsheet_id: str) -> None:
     requests: list[dict[str, Any]] = []
+    exercise_names_by_muscle = _exercise_names_by_muscle_from_sheet(client, spreadsheet_id)
 
     for muscle in MUSCLE_TABS:
         client.update_values(
@@ -351,18 +411,80 @@ def create_workout_tabs(client: SheetsClient, spreadsheet_id: str) -> None:
             f"{muscle}!A1",
             [WORKOUT_ENTRY_COLUMNS],
         )
-        exercise_names = [ex.name for ex in exercises_for_muscle(muscle)]
-        if not exercise_names:
-            continue
-
+        exercise_names = exercise_names_by_muscle.get(muscle) or []
         sheet_id = _sheet_id(client, spreadsheet_id, muscle)
-        requests.append(
-            _dropdown_validation_request(
-                sheet_id=sheet_id,
-                column_index=1,
-                options=exercise_names,
+        requests.append(_date_format_request(sheet_id, column_index=0))
+        requests.append(_date_validation_request(sheet_id, column_index=0))
+        if exercise_names:
+            requests.append(
+                _dropdown_validation_request(
+                    sheet_id=sheet_id,
+                    column_index=1,
+                    options=exercise_names,
+                )
             )
-        )
+
+    client.batch_update(spreadsheet_id, requests)
+
+
+def create_goals_tab(client: SheetsClient, spreadsheet_id: str) -> None:
+    client.update_values(
+        spreadsheet_id,
+        f"{GOALS_SHEET}!A1",
+        [GOAL_COLUMNS],
+    )
+
+    sheet_id = _sheet_id(client, spreadsheet_id, GOALS_SHEET)
+    exercise_names = [ex.name for ex in DEFAULT_EXERCISES]
+    requests: list[dict[str, Any]] = [
+        _dropdown_validation_request(sheet_id=sheet_id, column_index=1, options=GOAL_TYPES),
+        _dropdown_validation_request(sheet_id=sheet_id, column_index=2, options=exercise_names),
+        _dropdown_validation_request(sheet_id=sheet_id, column_index=3, options=MUSCLE_TABS),
+        _dropdown_validation_request(sheet_id=sheet_id, column_index=5, options=GOAL_UNITS),
+        _date_format_request(sheet_id, column_index=6),
+        _date_validation_request(sheet_id, column_index=6),
+        _dropdown_validation_request(
+            sheet_id=sheet_id, column_index=7, options=GOAL_STATUS_OPTIONS
+        ),
+    ]
+    client.batch_update(spreadsheet_id, requests)
+
+
+def format_goals_tab(client: SheetsClient, spreadsheet_id: str) -> None:
+    """Apply colours and formatting to the Goals tab."""
+    try:
+        sheet_id = _sheet_id(client, spreadsheet_id, GOALS_SHEET)
+    except ValueError:
+        return
+
+    hdr_bg = "#FFF9C4"
+    hdr_fg = "#F57F17"
+    requests: list[dict[str, Any]] = [
+        {
+            "updateSheetProperties": {
+                "properties": {
+                    "sheetId": sheet_id,
+                    "tabColorStyle": {"rgbColor": _rgb("#F9A825")},
+                    "gridProperties": {"frozenRowCount": 1},
+                },
+                "fields": "tabColorStyle,gridProperties.frozenRowCount",
+            }
+        },
+        _format_range(sheet_id, 0, 1, 0, 9, bg=hdr_bg, fg=hdr_fg, bold=True, font_size=10),
+    ]
+
+    for col_idx, px in [
+        (0, 80),  # Goal ID
+        (1, 90),  # Type
+        (2, 200),  # Exercise
+        (3, 100),  # Muscle
+        (4, 80),  # Target
+        (5, 110),  # Unit
+        (6, 110),  # Target Date
+        (7, 90),  # Status
+        (8, 220),  # Notes
+    ]:
+        requests.append(_col_width(sheet_id, col_idx, px))
 
     client.batch_update(spreadsheet_id, requests)
 
@@ -396,240 +518,328 @@ def hide_internal_sheets(client: SheetsClient, spreadsheet_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Dashboard content
+# Dashboard — interactive workout tracker (data via Apps Script)
 # ---------------------------------------------------------------------------
 #
-# Layout (0-based row indices → Sheet rows 1-based):
-#
-#  Row 0  (A1)  : Title bar — "LiftLogic Dashboard"          (merged A:H)
-#  Row 1  (A2)  : Subtitle — "Last refreshed: …"             (merged A:H)
-#  Row 2  (A3)  : blank
-#  Row 3  (A4)  : OVERVIEW header (A:C) | RECENT ACTIVITY header (E:H)
-#  Row 4  (A5)  : Total Workouts | formula | | | =QUERY recent (spills E5:H14)
-#  Row 5  (A6)  : This Week | formula
-#  Row 6  (A7)  : This Month | formula
-#  Rows 7-13    : blank in A:D; QUERY spill in E:H
-#  Row 14 (A15) : blank
-#  Row 15 (A16) : PERSONAL RECORDS header (A:D)
-#  Row 16 (A17) : =QUERY PRs — strength only (spills A17:D...)
+# Layout (0-based row → sheet row):
+#  Row 0  : Title — "LiftLogic — Workout Tracker"           (merged A:L)
+#  Row 1  : Subtitle — live sync status                     (merged A:L)
+#  Row 2  : Filter controls (muscle, view, search, exercise)
+#  Row 3  : spacer
+#  Row 4  : KPI labels
+#  Row 5  : KPI values (Apps Script refreshDashboard)
+#  Row 6  : Section title (Apps Script)
+#  Row 7  : Table headers (Apps Script)
+#  Row 8+ : Table data (Apps Script)
 #
 # ---------------------------------------------------------------------------
 
-_RECENT_QUERY = (
-    "=IFERROR(QUERY(Workout_Log!B2:G,"
-    '"SELECT Col1,Col2,Col4,Col5 WHERE Col1 IS NOT NULL '
-    "ORDER BY Col1 DESC LIMIT 10 "
-    "LABEL Col1 'Date',Col2 'Muscle',Col4 'Exercise',Col5 'Weight'\""
-    ',1),"")'
-)
-
-_PR_QUERY = (
-    "=IFERROR(QUERY(Workout_Log!B2:G,"
-    '"SELECT Col4,MAX(Col5),MAX(Col1) '
-    "WHERE Col5>0 AND Col2<>'Cardio' "
-    "GROUP BY Col4 ORDER BY MAX(Col5) DESC "
-    "LABEL Col4 'Exercise',MAX(Col5) 'Best Weight (lb)',MAX(Col1) 'Date'\""
-    ',0),"")'
-)
-
-_TOTAL_FORMULA = '=IFERROR(COUNTA(UNIQUE(FILTER(Workout_Log!B2:B,Workout_Log!B2:B<>""))),0)'
-_WEEK_FORMULA = (
-    "=IFERROR(COUNTA(UNIQUE(FILTER(Workout_Log!B2:B,"
-    '(Workout_Log!B2:B<>"")'
-    "*(Workout_Log!B2:B>=TODAY()-WEEKDAY(TODAY())+1)))),0)"
-)
-_MONTH_FORMULA = (
-    "=IFERROR(COUNTA(UNIQUE(FILTER(Workout_Log!B2:B,"
-    '(Workout_Log!B2:B<>"")'
-    "*(MONTH(Workout_Log!B2:B)=MONTH(TODAY()))"
-    "*(YEAR(Workout_Log!B2:B)=YEAR(TODAY()))))),0)"
-)
+_DASHBOARD_WIDTH = 12  # columns A–L
+_DASHBOARD_DATA_ROWS = 100
 
 
 def _write_dashboard_content(client: SheetsClient, spreadsheet_id: str) -> None:
-    """Write all cell values and formulas to the Dashboard tab."""
-    blank7 = [[] for _ in range(7)]  # rows 7-13: blank in A:D (QUERY spills E:H)
+    """Write dashboard shell — controls, KPI placeholders, and instructions."""
+    blank = [""] * _DASHBOARD_WIDTH
+    # Compact filter row: label|value pairs packed left-to-right
+    control_row = list(blank)
+    control_row[0] = "MUSCLE"
+    control_row[1] = "All"
+    control_row[2] = "VIEW"
+    control_row[3] = "Summary"
+    control_row[4] = "SEARCH"
+    control_row[5] = ""  # empty — Sheets has no real placeholders; hint is a cell note
+    control_row[7] = "EXERCISE"
+    control_row[8] = "All"
+
+    kpi_labels = list(blank)
+    kpi_labels[1] = "EXERCISES"
+    kpi_labels[4] = "LOG ENTRIES"
+    kpi_labels[7] = "TOP LIFT (LB)"
+
+    kpi_values = list(blank)
+    kpi_values[1] = 0
+    kpi_values[4] = 0
+    kpi_values[7] = "—"
+    kpi_values[9] = ""  # top-lift exercise (inside card)
 
     values: list[list[Any]] = [
-        # Row 0: Title
-        ["LiftLogic Dashboard"],
-        # Row 1: Last-refreshed subtitle (written here as placeholder; refresh updates it)
-        ["Analytics last refreshed: Never  —  run  liftlogic refresh  to update"],
-        # Row 2: blank
-        [],
-        # Row 3: Section headers (cols A–C and E–H)
-        ["OVERVIEW", "", "", "", "RECENT ACTIVITY"],
-        # Row 4: Stats + recent-activity QUERY
-        ["Total Workouts", _TOTAL_FORMULA, "", "", _RECENT_QUERY],
-        # Row 5
-        ["This Week", _WEEK_FORMULA],
-        # Row 6
-        ["This Month", _MONTH_FORMULA],
-        # Rows 7–13: blank (QUERY spill zone for recent activity)
-        *blank7,
-        # Row 14: blank separator
-        [],
-        # Row 15: Personal Records header
-        ["PERSONAL RECORDS (Strength)"],
-        # Row 16: PR QUERY
-        [_PR_QUERY],
+        ["LiftLogic — Workout Tracker"],
+        ["Live · open the sheet or use LiftLogic menu → Refresh Dashboard"],
+        control_row,
+        blank,
+        kpi_labels,
+        kpi_values,
+        ["Summary — all muscles"],
+        ["Exercise", "Best", "Unit", "Date", "Notes", ""],
+        *[[""] * _DASHBOARD_WIDTH for _ in range(_DASHBOARD_DATA_ROWS)],
     ]
-
     client.update_values(spreadsheet_id, f"{DASHBOARD_SHEET}!A1", values)
 
 
-# ---------------------------------------------------------------------------
-# Dashboard formatting
-# ---------------------------------------------------------------------------
+def _create_dashboard_validations(client: SheetsClient, spreadsheet_id: str) -> None:
+    sheet_id = _sheet_id(client, spreadsheet_id, DASHBOARD_SHEET)
+    requests: list[dict[str, Any]] = [
+        _dropdown_validation_request(
+            sheet_id=sheet_id,
+            column_index=1,
+            options=list(DASHBOARD_MUSCLE_FILTER_OPTIONS),
+            start_row=3,
+            end_row=3,
+        ),
+        _dropdown_validation_request(
+            sheet_id=sheet_id,
+            column_index=3,
+            options=list(DASHBOARD_VIEW_OPTIONS),
+            start_row=3,
+            end_row=3,
+        ),
+        _dropdown_validation_request(
+            sheet_id=sheet_id,
+            column_index=8,
+            options=["All"],
+            start_row=3,
+            end_row=3,
+        ),
+    ]
+    client.batch_update(spreadsheet_id, requests)
 
 
 def _apply_dashboard_formatting(client: SheetsClient, spreadsheet_id: str) -> None:
     sheet_id = _sheet_id(client, spreadsheet_id, DASHBOARD_SHEET)
     requests: list[dict[str, Any]] = []
+    w = _DASHBOARD_WIDTH
 
-    # ── Title bar (row 0, cols A:H = 0:8) ─────────────────────────────────
-    requests.append(_merge_cells(sheet_id, 0, 1, 0, 8))
-    requests.append(
-        _format_range(
-            sheet_id,
-            0,
-            1,
-            0,
-            8,
-            bg=_TITLE_BG,
-            fg=_TITLE_FG,
-            bold=True,
-            font_size=18,
-            h_align="LEFT",
-            v_align="MIDDLE",
-        )
-    )
-    requests.append(_row_height(sheet_id, 0, 44))
-
-    # ── Subtitle / last-refreshed (row 1) ─────────────────────────────────
-    requests.append(_merge_cells(sheet_id, 1, 2, 0, 8))
-    requests.append(
-        _format_range(
-            sheet_id,
-            1,
-            2,
-            0,
-            8,
-            bg=_SUBTITLE_BG,
-            fg=_SUBTITLE_FG,
-            italic=True,
-            font_size=9,
-        )
-    )
-    requests.append(_row_height(sheet_id, 1, 22))
-
-    # ── OVERVIEW section header (row 3, cols A:C = 0:3) ───────────────────
-    requests.append(_merge_cells(sheet_id, 3, 4, 0, 3))
-    requests.append(
-        _format_range(sheet_id, 3, 4, 0, 3, bg=_SECTION_BG, fg=_SECTION_FG, bold=True, font_size=10)
-    )
-    requests.append(_row_height(sheet_id, 3, 28))
-
-    # ── Stat label column (rows 4-6, col A) ───────────────────────────────
-    requests.append(_format_range(sheet_id, 4, 7, 0, 1, bg=_STAT_LABEL_BG, bold=True, font_size=10))
-    # Stat value column (rows 4-6, col B) — right-aligned
-    requests.append(
-        _format_range(
-            sheet_id,
-            4,
-            7,
-            1,
-            2,
-            bg=_STAT_VALUE_BG,
-            bold=True,
-            font_size=11,
-            h_align="RIGHT",
-        )
-    )
-
-    # ── RECENT ACTIVITY section header (row 3, cols E:H = 4:8) ───────────
-    requests.append(_merge_cells(sheet_id, 3, 4, 4, 8))
-    requests.append(
-        _format_range(sheet_id, 3, 4, 4, 8, bg=_SECTION_BG, fg=_SECTION_FG, bold=True, font_size=10)
-    )
-
-    # ── Recent activity table header row (row 4, cols E:H) ────────────────
-    # QUERY overwrites cell values but formatting persists
-    requests.append(
-        _format_range(
-            sheet_id, 4, 5, 4, 8, bg=_TABLE_HDR_BG, fg=_TABLE_HDR_FG, bold=True, font_size=10
-        )
-    )
-
-    # ── Alternating rows for recent activity (rows 5-14, cols E:H) ────────
-    for i in range(10):
-        row = 5 + i
-        bg = _ALT_ROW_BG if i % 2 == 0 else _STAT_VALUE_BG
-        requests.append(_format_range(sheet_id, row, row + 1, 4, 8, bg=bg, font_size=10))
-
-    # ── PERSONAL RECORDS section header (row 15, cols A:D = 0:4) ─────────
-    requests.append(_merge_cells(sheet_id, 15, 16, 0, 4))
-    requests.append(
-        _format_range(
-            sheet_id, 15, 16, 0, 4, bg=_SECTION_BG, fg=_SECTION_FG, bold=True, font_size=10
-        )
-    )
-    requests.append(_row_height(sheet_id, 15, 28))
-
-    # ── PR table header row (row 16, cols A:D) ────────────────────────────
-    requests.append(
-        _format_range(
-            sheet_id,
-            16,
-            17,
-            0,
-            4,
-            bg=_TABLE_HDR_BG,
-            fg=_TABLE_HDR_FG,
-            bold=True,
-            font_size=10,
-        )
-    )
-
-    # ── Alternating rows for PRs (rows 17-40, cols A:D) ───────────────────
-    for i in range(24):
-        row = 17 + i
-        bg = _ALT_ROW_BG if i % 2 == 0 else _STAT_VALUE_BG
-        requests.append(_format_range(sheet_id, row, row + 1, 0, 4, bg=bg, font_size=10))
-
-    # ── Column widths ──────────────────────────────────────────────────────
-    for col_idx, px in [
-        (0, 180),  # A: Label / Exercise
-        (1, 110),  # B: Value / Best Weight
-        (2, 80),  # C: spacer / Unit
-        (3, 110),  # D: spacer / Date
-        (4, 100),  # E: Date (recent)
-        (5, 85),  # F: Muscle
-        (6, 190),  # G: Exercise (recent)
-        (7, 80),  # H: Weight (recent)
-    ]:
-        requests.append(_col_width(sheet_id, col_idx, px))
-
-    # ── Freeze title + subtitle rows ───────────────────────────────────────
     requests.append(
         {
             "updateSheetProperties": {
                 "properties": {
                     "sheetId": sheet_id,
-                    "gridProperties": {"frozenRowCount": 2},
+                    "gridProperties": {"hideGridlines": True, "frozenRowCount": 8},
                 },
-                "fields": "gridProperties.frozenRowCount",
+                "fields": "gridProperties.hideGridlines,gridProperties.frozenRowCount",
             }
         }
     )
 
-    # ── Dashboard tab colour (green) ───────────────────────────────────────
+    # Hero title
+    requests.append(_merge_cells(sheet_id, 0, 1, 0, w))
+    requests.append(
+        _format_range(
+            sheet_id,
+            0,
+            1,
+            0,
+            w,
+            bg=_TITLE_BG,
+            fg=_TITLE_FG,
+            bold=True,
+            font_size=20,
+            h_align="LEFT",
+            v_align="MIDDLE",
+        )
+    )
+    requests.append(_row_height(sheet_id, 0, 48))
+
+    # Subtitle
+    requests.append(_merge_cells(sheet_id, 1, 2, 0, w))
+    requests.append(
+        _format_range(
+            sheet_id,
+            1,
+            2,
+            0,
+            w,
+            bg=_SUBTITLE_BG,
+            fg=_SUBTITLE_FG,
+            italic=True,
+            font_size=9,
+            h_align="LEFT",
+            v_align="MIDDLE",
+        )
+    )
+    requests.append(_row_height(sheet_id, 1, 22))
+
+    # Control bar (row 2) — packed label|value pairs
+    requests.append(
+        _format_range(
+            sheet_id,
+            2,
+            3,
+            0,
+            w,
+            bg="#E2E8F0",
+            fg="#334155",
+            bold=True,
+            font_size=9,
+            v_align="MIDDLE",
+        )
+    )
+    # Accent strip on left edge of filter bar
+    requests.append(
+        _format_range(
+            sheet_id,
+            2,
+            3,
+            0,
+            1,
+            bg=_ACCENT_BG,
+            fg=_ACCENT_FG,
+            bold=True,
+            font_size=9,
+            v_align="MIDDLE",
+            h_align="CENTER",
+        )
+    )
+    # Value cells: B, D, F:G (search), I
+    for col in (1, 3, 8):
+        requests.append(
+            _format_range(
+                sheet_id,
+                2,
+                3,
+                col,
+                col + 1,
+                bg=_KPI_VALUE_BG,
+                fg=_KPI_VALUE_FG,
+                bold=False,
+                font_size=10,
+                v_align="MIDDLE",
+            )
+        )
+        requests.append(_border_range(sheet_id, 2, 3, col, col + 1))
+    requests.append(_merge_cells(sheet_id, 2, 3, 5, 7))  # search F:G
+    requests.append(
+        _format_range(
+            sheet_id,
+            2,
+            3,
+            5,
+            7,
+            bg=_KPI_VALUE_BG,
+            fg=_KPI_VALUE_FG,
+            italic=False,
+            font_size=10,
+            v_align="MIDDLE",
+        )
+    )
+    requests.append(_border_range(sheet_id, 2, 3, 5, 7))
+    # Hover hint (Sheets cannot show HTML placeholders)
+    requests.append(
+        {
+            "updateCells": {
+                "start": {
+                    "sheetId": sheet_id,
+                    "rowIndex": 2,
+                    "columnIndex": 5,
+                },
+                "rows": [{"values": [{"note": DASHBOARD_SEARCH_HINT}]}],
+                "fields": "note",
+            }
+        }
+    )
+    requests.append(_row_height(sheet_id, 2, 34))
+
+    # Spacer row
+    requests.append(_row_height(sheet_id, 3, 10))
+
+    # KPI cards (rows 4–5): Exercises B–C, Entries E–F, Top Lift H–K
+    requests.extend(_format_kpi_card(sheet_id, 1, 3, label_row=4, value_row=5))
+    requests.extend(_format_kpi_card(sheet_id, 4, 6, label_row=4, value_row=5))
+    requests.extend(_format_top_lift_kpi_card(sheet_id, label_row=4, value_row=5))
+    requests.append(_row_height(sheet_id, 4, 22))
+    requests.append(_row_height(sheet_id, 5, 42))
+
+    # Section title (row 6)
+    requests.append(_merge_cells(sheet_id, 6, 7, 0, w))
+    requests.append(
+        _format_range(
+            sheet_id,
+            6,
+            7,
+            0,
+            w,
+            bg=_SECTION_BG,
+            fg=_SECTION_FG,
+            bold=True,
+            font_size=11,
+            h_align="LEFT",
+            v_align="MIDDLE",
+        )
+    )
+    requests.append(_row_height(sheet_id, 6, 30))
+
+    # Table header (row 7) — 6 cols including Unit
+    requests.append(
+        _format_range(
+            sheet_id,
+            7,
+            8,
+            0,
+            6,
+            bg=_TABLE_HDR_BG,
+            fg=_TABLE_HDR_FG,
+            bold=True,
+            font_size=9,
+        )
+    )
+
+    # Data rows (rows 8–107) — two range fills instead of 100 per-row requests
+    data_start = 8
+    data_end = 8 + _DASHBOARD_DATA_ROWS
+    requests.append(
+        _format_range(
+            sheet_id,
+            data_start,
+            data_end,
+            0,
+            6,
+            bg=_KPI_VALUE_BG,
+            font_size=10,
+        )
+    )
+    requests.append(
+        {
+            "addBanding": {
+                "bandedRange": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": data_start,
+                        "endRowIndex": data_end,
+                        "startColumnIndex": 0,
+                        "endColumnIndex": 6,
+                    },
+                    "rowProperties": {
+                        "headerColor": _rgb(_KPI_VALUE_BG),
+                        "firstBandColor": _rgb(_ALT_ROW_BG),
+                        "secondBandColor": _rgb(_KPI_VALUE_BG),
+                    },
+                }
+            }
+        }
+    )
+    for col_idx, px in [
+        (0, 100),
+        (1, 110),
+        (2, 150),
+        (3, 90),
+        (4, 70),
+        (5, 160),
+        (6, 20),
+        (7, 80),
+        (8, 130),
+        (9, 70),
+        (10, 100),
+        (11, 16),
+    ]:
+        requests.append(_col_width(sheet_id, col_idx, px))
+
     requests.append(
         {
             "updateSheetProperties": {
                 "properties": {
                     "sheetId": sheet_id,
-                    "tabColorStyle": {"rgbColor": _rgb("#388E3C")},
+                    "tabColorStyle": {"rgbColor": _rgb("#059669")},
                 },
                 "fields": "tabColorStyle",
             }
@@ -637,6 +847,157 @@ def _apply_dashboard_formatting(client: SheetsClient, spreadsheet_id: str) -> No
     )
 
     client.batch_update(spreadsheet_id, requests)
+
+
+def _format_kpi_card(
+    sheet_id: int,
+    start_col: int,
+    end_col: int,
+    *,
+    label_row: int,
+    value_row: int,
+) -> list[dict[str, Any]]:
+    """Format a two-row KPI card with label on top and large value below."""
+    requests: list[dict[str, Any]] = [
+        _merge_cells(sheet_id, label_row, label_row + 1, start_col, end_col),
+        _format_range(
+            sheet_id,
+            label_row,
+            label_row + 1,
+            start_col,
+            end_col,
+            bg=_TITLE_BG,
+            fg="#94A3B8",
+            bold=True,
+            font_size=8,
+            h_align="CENTER",
+            v_align="BOTTOM",
+        ),
+        _merge_cells(sheet_id, value_row, value_row + 1, start_col, end_col),
+        _format_range(
+            sheet_id,
+            value_row,
+            value_row + 1,
+            start_col,
+            end_col,
+            bg=_KPI_VALUE_BG,
+            fg=_KPI_VALUE_FG,
+            bold=True,
+            font_size=22,
+            h_align="CENTER",
+            v_align="MIDDLE",
+        ),
+        _border_range(sheet_id, label_row, value_row + 1, start_col, end_col),
+        # Emerald accent on top edge
+        {
+            "updateBorders": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": label_row,
+                    "endRowIndex": label_row + 1,
+                    "startColumnIndex": start_col,
+                    "endColumnIndex": end_col,
+                },
+                "top": {"style": "SOLID", "color": _rgb(_ACCENT_BG), "width": 3},
+            }
+        },
+    ]
+    return requests
+
+
+def _format_top_lift_kpi_card(
+    sheet_id: int,
+    *,
+    label_row: int,
+    value_row: int,
+) -> list[dict[str, Any]]:
+    """Top-lift card spans H–K: value on the left, exercise name on the right."""
+    start_col, end_col = 7, 11  # H–K
+    requests: list[dict[str, Any]] = [
+        _merge_cells(sheet_id, label_row, label_row + 1, start_col, end_col),
+        _format_range(
+            sheet_id,
+            label_row,
+            label_row + 1,
+            start_col,
+            end_col,
+            bg=_TITLE_BG,
+            fg="#94A3B8",
+            bold=True,
+            font_size=8,
+            h_align="CENTER",
+            v_align="BOTTOM",
+        ),
+        _merge_cells(sheet_id, value_row, value_row + 1, start_col, start_col + 2),
+        _format_range(
+            sheet_id,
+            value_row,
+            value_row + 1,
+            start_col,
+            start_col + 2,
+            bg=_KPI_VALUE_BG,
+            fg=_KPI_VALUE_FG,
+            bold=True,
+            font_size=22,
+            h_align="CENTER",
+            v_align="MIDDLE",
+        ),
+        _merge_cells(sheet_id, value_row, value_row + 1, start_col + 2, end_col),
+        _format_range(
+            sheet_id,
+            value_row,
+            value_row + 1,
+            start_col + 2,
+            end_col,
+            bg=_KPI_VALUE_BG,
+            fg=_KPI_LABEL_FG,
+            italic=False,
+            font_size=10,
+            h_align="LEFT",
+            v_align="MIDDLE",
+        ),
+        _border_range(sheet_id, label_row, value_row + 1, start_col, end_col),
+        {
+            "updateBorders": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": label_row,
+                    "endRowIndex": label_row + 1,
+                    "startColumnIndex": start_col,
+                    "endColumnIndex": end_col,
+                },
+                "top": {"style": "SOLID", "color": _rgb(_ACCENT_BG), "width": 3},
+            }
+        },
+    ]
+    return requests
+
+
+def _border_range(
+    sheet_id: int,
+    start_row: int,
+    end_row: int,
+    start_col: int,
+    end_col: int,
+    *,
+    color: str = _BORDER_COLOR,
+) -> dict[str, Any]:
+    border_style = {"style": "SOLID", "color": _rgb(color), "width": 1}
+    return {
+        "updateBorders": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_col,
+                "endColumnIndex": end_col,
+            },
+            "top": border_style,
+            "bottom": border_style,
+            "left": border_style,
+            "right": border_style,
+        }
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -771,13 +1132,18 @@ def _dropdown_validation_request(
     sheet_id: int,
     column_index: int,
     options: list[str],
+    *,
+    start_row: int | None = None,
+    end_row: int | None = None,
 ) -> dict[str, Any]:
+    row_start = (start_row - 1) if start_row else (DATA_START_ROW - 1)
+    row_end = end_row if end_row else 1000
     return {
         "setDataValidation": {
             "range": {
                 "sheetId": sheet_id,
-                "startRowIndex": DATA_START_ROW - 1,
-                "endRowIndex": 1000,
+                "startRowIndex": row_start,
+                "endRowIndex": row_end,
                 "startColumnIndex": column_index,
                 "endColumnIndex": column_index + 1,
             },
@@ -793,9 +1159,88 @@ def _dropdown_validation_request(
     }
 
 
+def _date_column_range(
+    sheet_id: int,
+    column_index: int,
+    *,
+    start_row: int | None = None,
+    end_row: int | None = None,
+) -> dict[str, int]:
+    row_start = (start_row - 1) if start_row else (DATA_START_ROW - 1)
+    row_end = end_row if end_row else 1000
+    return {
+        "sheetId": sheet_id,
+        "startRowIndex": row_start,
+        "endRowIndex": row_end,
+        "startColumnIndex": column_index,
+        "endColumnIndex": column_index + 1,
+    }
+
+
+def _date_format_request(
+    sheet_id: int,
+    column_index: int,
+    *,
+    start_row: int | None = None,
+    end_row: int | None = None,
+) -> dict[str, Any]:
+    """Display Date column as yyyy-mm-dd so Sheets offers a calendar picker."""
+    return {
+        "repeatCell": {
+            "range": _date_column_range(
+                sheet_id, column_index, start_row=start_row, end_row=end_row
+            ),
+            "cell": {
+                "userEnteredFormat": {"numberFormat": {"type": "DATE", "pattern": "yyyy-mm-dd"}}
+            },
+            "fields": "userEnteredFormat.numberFormat",
+        }
+    }
+
+
+def _date_validation_request(
+    sheet_id: int,
+    column_index: int,
+    *,
+    start_row: int | None = None,
+    end_row: int | None = None,
+) -> dict[str, Any]:
+    """Require a valid date; Sheets shows the calendar UI when editing."""
+    return {
+        "setDataValidation": {
+            "range": _date_column_range(
+                sheet_id, column_index, start_row=start_row, end_row=end_row
+            ),
+            "rule": {
+                "condition": {"type": "DATE_IS_VALID"},
+                "showCustomUi": True,
+                "strict": False,
+            },
+        }
+    }
+
+
 def _sheet_id(client: SheetsClient, spreadsheet_id: str, title: str) -> int:
-    meta = client._sheets.spreadsheets().get(spreadsheetId=spreadsheet_id).execute()
+    meta = client.get_spreadsheet(spreadsheet_id, fields="sheets.properties")
     for sheet in meta.get("sheets", []):
         if sheet["properties"]["title"] == title:
             return sheet["properties"]["sheetId"]
     raise ValueError(f"Sheet not found: {title}")
+
+
+def _unmerge_dashboard(client: SheetsClient, spreadsheet_id: str) -> None:
+    """Clear merges and banding on Dashboard before reformatting."""
+    meta = client.get_spreadsheet(
+        spreadsheet_id,
+        fields="sheets.merges,sheets.bandedRanges,sheets.properties",
+    )
+    requests: list[dict[str, Any]] = []
+    for sheet in meta.get("sheets", []):
+        if sheet["properties"]["title"] != DASHBOARD_SHEET:
+            continue
+        for merge_range in sheet.get("merges", []):
+            requests.append({"unmergeCells": {"range": merge_range}})
+        for band in sheet.get("bandedRanges", []):
+            requests.append({"deleteBanding": {"bandedRangeId": band["bandedRangeId"]}})
+    if requests:
+        client.batch_update(spreadsheet_id, requests)

@@ -8,11 +8,8 @@ build/
 venv/
 .env
 credentials/
-node_modules/
 *.json
 !apps-script/
-!package.json
-!package-lock.json
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/

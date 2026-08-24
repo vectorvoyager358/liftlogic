@@ -74,8 +74,17 @@ def test_cardio_exercises_have_non_lb_metric():
     )
 
 
-def test_strength_exercises_default_to_lb():
+def test_bodyweight_exercises_use_reps():
+    assert exercise_metric("Push-Up") == "reps"
+    assert exercise_metric("Pull-Up") == "reps"
+    assert exercise_metric("CH004") == "reps"
+
+
+def test_weighted_strength_exercises_use_lb():
     strength_muscles = ["Chest", "Back", "Shoulders", "Biceps", "Triceps", "Legs"]
     for muscle in strength_muscles:
         for ex in exercises_for_muscle(muscle):
-            assert ex.metric == "lb", f"{ex.name} should have metric='lb'"
+            if ex.equipment == "Bodyweight":
+                assert ex.metric == "reps", f"{ex.name} should use reps"
+            else:
+                assert ex.metric == "lb", f"{ex.name} should have metric='lb'"

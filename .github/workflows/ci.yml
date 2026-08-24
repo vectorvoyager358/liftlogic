@@ -2,9 +2,8 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
-    branches: ["**"]
 
 jobs:
   lint:
@@ -18,14 +17,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install ruff
-        run: pip install ruff==0.14.1
+      - name: Install pre-commit
+        run: pip install pre-commit
 
-      - name: Lint (ruff check)
-        run: ruff check src tests
-
-      - name: Format check (ruff format)
-        run: ruff format --check src tests
+      - name: Run pre-commit hooks
+        run: pre-commit run --all-files
 
   test:
     name: Tests

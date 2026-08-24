@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top" />
+    <style>
+      :root {
+        --bg: #f8fafc;
+        --card: #ffffff;
+        --ink: #0f172a;
+        --muted: #64748b;
+        --border: #e2e8f0;
+        --accent: #10b981;
+        --accent-dark: #059669;
+        --header: #0f172a;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: "Google Sans", "Segoe UI", system-ui, sans-serif;
+        background: var(--bg);
+        color: var(--ink);
+        font-size: 13px;
+      }
+      .wrap { padding: 14px 14px 24px; }
+      .hero {
+        background: var(--header);
+        color: #fff;
+        border-radius: 12px;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+      }
+      .hero h1 {
+        margin: 0 0 4px;
+        font-size: 18px;
+        font-weight: 600;
+      }
+      .badge {
+        display: inline-block;
+        background: rgba(16, 185, 129, 0.2);
+        color: #6ee7b7;
+        font-size: 11px;
+        padding: 3px 8px;
+        border-radius: 999px;
+      }
+      .sub { color: #94a3b8; font-size: 11px; margin-top: 6px; }
+      .panel {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        padding: 12px;
+        margin-bottom: 12px;
+      }
+      .row { display: flex; gap: 8px; margin-bottom: 8px; }
+      .row:last-child { margin-bottom: 0; }
+      .field { flex: 1; min-width: 0; }
+      label {
+        display: block;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        color: var(--muted);
+        margin-bottom: 4px;
+        text-transform: uppercase;
+      }
+      select, input[type="text"], input[type="date"], input[type="number"] {
+        width: 100%;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 13px;
+        background: #fff;
+      }
+      .log-toggle {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--accent-dark);
+        padding: 4px 0 8px;
+        user-select: none;
+      }
+      .log-toggle span { font-size: 16px; line-height: 1; }
+      .log-status {
+        font-size: 11px;
+        min-height: 16px;
+        margin-top: 6px;
+        padding: 6px 10px;
+        border-radius: 6px;
+      }
+      .log-status.ok { background: #dcfce7; color: #166534; }
+      .log-status.err { background: #fee2e2; color: #991b1b; }
+      .date-row { display: flex; gap: 6px; align-items: stretch; }
+      .date-row input[type="date"] { flex: 1; min-width: 0; }
+      .btn-today {
+        flex: none;
+        border: 1px solid var(--border);
+        background: #f1f5f9;
+        color: var(--ink);
+        border-radius: 8px;
+        padding: 0 10px;
+        font-size: 11px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+      .btn-today:hover { background: #e2e8f0; }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .tab {
+        flex: 1;
+        border: 1px solid var(--border);
+        background: #fff;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .tab.active {
+        background: var(--accent);
+        border-color: var(--accent-dark);
+        color: #fff;
+      }
+      .kpis {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .kpi {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 10px;
+        text-align: center;
+      }
+      .kpi .label {
+        font-size: 10px;
+        color: var(--muted);
+        font-weight: 700;
+        text-transform: uppercase;
+      }
+      .kpi .value {
+        font-size: 22px;
+        font-weight: 700;
+        margin-top: 4px;
+      }
+      .kpi .hint {
+        font-size: 10px;
+        color: var(--muted);
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .section-title {
+        font-size: 13px;
+        font-weight: 700;
+        margin: 0 0 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        background: #fff;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        overflow: hidden;
+      }
+      thead th {
+        background: var(--header);
+        color: #fff;
+        text-align: left;
+        font-size: 10px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 8px 10px;
+      }
+      tbody td {
+        padding: 8px 10px;
+        border-top: 1px solid var(--border);
+        vertical-align: top;
+      }
+      tbody tr:nth-child(even) td { background: #f8fafc; }
+      .empty {
+        text-align: center;
+        color: var(--muted);
+        padding: 24px 12px;
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        background: #fff;
+      }
+      .actions { display: flex; gap: 8px; margin-bottom: 12px; }
+      button {
+        flex: 1;
+        border: none;
+        border-radius: 8px;
+        padding: 9px 12px;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .btn-primary { background: var(--accent); color: #fff; }
+      .btn-secondary { background: #fff; color: var(--ink); border: 1px solid var(--border); }
+      .loading { opacity: 0.55; pointer-events: none; }
+      .status { font-size: 11px; color: var(--muted); min-height: 16px; margin-top: 8px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap" id="app">
+      <div class="hero">
+        <h1>LiftLogic Tracker</h1>
+        <span class="badge" id="liveBadge">Live · synced to sheet</span>
+        <div class="sub" id="refreshedAt">Loading…</div>
+      </div>
+
+      <div class="actions">
+        <button class="btn-secondary" onclick="syncAll()">Sync All Tabs</button>
+        <button class="btn-primary" onclick="refresh()">Refresh</button>
+      </div>
+
+      <!-- Log Workout form -->
+      <div class="panel">
+        <div class="log-toggle" onclick="toggleLogForm()">
+          + Log Workout <span id="logChevron">▾</span>
+        </div>
+        <div id="logForm" style="display:none">
+          <div class="row">
+            <div class="field">
+              <label for="logDate">Date</label>
+              <div class="date-row">
+                <input type="date" id="logDate" />
+                <button type="button" class="btn-today" onclick="setLogDateToday()">Today</button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="logMuscle">Muscle</label>
+              <select id="logMuscle" onchange="onLogMuscleChange()"></select>
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="logExercise">Exercise</label>
+              <select id="logExercise" onchange="onLogExerciseChange()"></select>
+              <input type="text" id="logExerciseCustom" placeholder="New exercise name…" style="display:none;margin-top:6px" />
+            </div>
+            <div class="field" style="max-width:110px">
+              <label for="logWeight" id="logWeightLabel">Weight (lb)</label>
+              <input type="number" id="logWeight" min="0" step="2.5" placeholder="0" />
+            </div>
+          </div>
+          <div class="row">
+            <div class="field">
+              <label for="logNotes">Notes</label>
+              <input type="text" id="logNotes" placeholder="Optional" />
+            </div>
+          </div>
+          <button class="btn-primary" style="flex:none;width:100%" onclick="submitLogEntry()">Log It</button>
+          <div id="logStatus" class="log-status" style="display:none"></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="row">
+          <div class="field">
+            <label for="muscle">Tab / Muscle</label>
+            <select id="muscle" onchange="onFilterChange()"></select>
+          </div>
+          <div class="field">
+            <label for="exercise">Exercise</label>
+            <select id="exercise" onchange="onFilterChange()"></select>
+          </div>
+        </div>
+        <div class="row">
+          <div class="field">
+            <label for="search">Search log</label>
+            <input id="search" type="text" placeholder="Type to filter…" oninput="onSearchInput()" />
+          </div>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tab active" id="tabSummary" onclick="setView('Summary')">Summary</button>
+        <button class="tab" id="tabLog" onclick="setView('Workout Log')">Workout Log</button>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="label">Exercises</div>
+          <div class="value" id="kpiExercises">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Log Entries</div>
+          <div class="value" id="kpiEntries">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">Top Lift</div>
+          <div class="value" id="kpiTop">—</div>
+          <div class="hint" id="kpiTopExercise"></div>
+        </div>
+      </div>
+
+      <div class="section-title" id="sectionTitle">Summary</div>
+      <div id="tableWrap"></div>
+      <div class="status" id="status"></div>
+    </div>
+
+    <script>
+      var state = {
+        muscle: 'All',
+        view: 'Summary',
+        search: '',
+        exercise: 'All',
+        logCatalog: [],
+      };
+      var searchTimer = null;
+      var METRIC_LABELS = {
+        lb: 'Weight (lb)',
+        reps: 'Reps',
+        steps: 'Steps',
+        minutes: 'Minutes',
+      };
+
+      function todayIso_() {
+        var d = new Date();
+        var m = String(d.getMonth() + 1).padStart(2, '0');
+        var day = String(d.getDate()).padStart(2, '0');
+        return d.getFullYear() + '-' + m + '-' + day;
+      }
+
+      function setLogDateToday() {
+        document.getElementById('logDate').value = todayIso_();
+      }
+
+      function toggleLogForm() {
+        var form = document.getElementById('logForm');
+        var open = form.style.display !== 'none';
+        form.style.display = open ? 'none' : 'block';
+        document.getElementById('logChevron').textContent = open ? '▾' : '▴';
+        if (!open) {
+          if (!document.getElementById('logDate').value) setLogDateToday();
+          var filterMuscle = document.getElementById('muscle').value;
+          var logMuscle = document.getElementById('logMuscle');
+          if (filterMuscle && filterMuscle !== 'All') {
+            logMuscle.value = filterMuscle;
+          }
+          refillLogExercises_();
+          onLogExerciseChange();
+        }
+      }
+
+      function onLogMuscleChange() {
+        refillLogExercises_();
+        onLogExerciseChange();
+      }
+
+      function catalogForMuscle_(muscle) {
+        return (state.logCatalog || []).filter(function (ex) {
+          return ex.muscle === muscle;
+        });
+      }
+
+      function findCatalogExercise_(name) {
+        var list = state.logCatalog || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].name === name) return list[i];
+        }
+        return null;
+      }
+
+      function refillLogExercises_() {
+        var muscle = document.getElementById('logMuscle').value;
+        var names = catalogForMuscle_(muscle).map(function (ex) { return ex.name; });
+        names.push('Other…');
+        var current = document.getElementById('logExercise').value;
+        var selected = names.indexOf(current) !== -1 ? current : names[0];
+        fillSelect('logExercise', names, selected);
+        onLogExerciseChange();
+      }
+
+      function onLogExerciseChange() {
+        var name = document.getElementById('logExercise').value;
+        var custom = document.getElementById('logExerciseCustom');
+        var isOther = name === 'Other…';
+        custom.style.display = isOther ? 'block' : 'none';
+        if (!isOther) custom.value = '';
+
+        var ex = findCatalogExercise_(name);
+        var metric = ex && ex.metric ? ex.metric : 'lb';
+        document.getElementById('logWeightLabel').textContent =
+          METRIC_LABELS[metric] || 'Value';
+        var input = document.getElementById('logWeight');
+        input.step = metric === 'lb' ? '2.5' : '1';
+        input.min = '0';
+        input.placeholder = metric === 'steps' ? '10000' : metric === 'reps' ? '10' : '0';
+      }
+
+      var logStatusTimer = null;
+
+      function setLogStatus(msg, ok) {
+        var el = document.getElementById('logStatus');
+        clearTimeout(logStatusTimer);
+        logStatusTimer = null;
+        if (!msg) {
+          el.style.display = 'none';
+          el.textContent = '';
+          return;
+        }
+        el.style.display = 'block';
+        el.className = 'log-status ' + (ok ? 'ok' : 'err');
+        el.textContent = msg;
+        // Auto-dismiss success messages (not "Saving…")
+        if (ok && msg !== 'Saving…') {
+          logStatusTimer = setTimeout(function () {
+            setLogStatus('', false);
+          }, 5000);
+        }
+      }
+
+      function submitLogEntry() {
+        var muscle = document.getElementById('logMuscle').value;
+        var selected = document.getElementById('logExercise').value;
+        var customName = document.getElementById('logExerciseCustom').value.trim();
+        var exercise = selected === 'Other…' ? customName : selected;
+        var weight = document.getElementById('logWeight').value;
+        var notes = document.getElementById('logNotes').value.trim();
+        var dateVal = document.getElementById('logDate').value;
+        var ex = findCatalogExercise_(exercise);
+        var metric = ex && ex.metric ? ex.metric : 'lb';
+        var valueLabel = METRIC_LABELS[metric] || 'Value';
+
+        if (!dateVal) {
+          setLogStatus('Pick a date (or tap Today).', false);
+          return;
+        }
+        if (!muscle || muscle === 'All') {
+          setLogStatus('Pick a muscle tab.', false);
+          return;
+        }
+        if (!exercise) {
+          setLogStatus(selected === 'Other…' ? 'Enter a new exercise name.' : 'Pick an exercise.', false);
+          return;
+        }
+        if (weight === '' || weight === null) {
+          setLogStatus('Enter ' + valueLabel.toLowerCase() + '.', false);
+          return;
+        }
+
+        setLogStatus('Saving…', true);
+        google.script.run
+          .withSuccessHandler(function (payload) {
+            setLogStatus('Logged ' + exercise + '.', true);
+            document.getElementById('logWeight').value = '';
+            document.getElementById('logNotes').value = '';
+            document.getElementById('logExerciseCustom').value = '';
+            setLogDateToday();
+            if (payload) renderPayload(payload);
+            refillLogExercises_();
+          })
+          .withFailureHandler(function (err) {
+            setLogStatus(err && err.message ? err.message : String(err), false);
+          })
+          .logWorkoutEntry({
+            date: dateVal,
+            muscle: muscle,
+            exercise: exercise,
+            weight: Number(weight),
+            notes: notes,
+          });
+      }
+
+      function setLoading(on) {
+        document.getElementById('app').classList.toggle('loading', on);
+      }
+
+      function setStatus(msg) {
+        document.getElementById('status').textContent = msg || '';
+      }
+
+      function isBlankSearch_(text) {
+        var t = String(text || '').trim().toLowerCase();
+        return !t
+          || t.indexOf('type to filter') === 0
+          || t.indexOf('exercise or notes') === 0;
+      }
+
+      function currentFilters() {
+        var rawSearch = document.getElementById('search').value || '';
+        return {
+          muscle: document.getElementById('muscle').value || 'All',
+          view: state.view,
+          search: isBlankSearch_(rawSearch) ? '' : rawSearch.trim(),
+          exercise: document.getElementById('exercise').value || 'All',
+        };
+      }
+
+      function setView(view) {
+        state.view = view;
+        document.getElementById('tabSummary').classList.toggle('active', view === 'Summary');
+        document.getElementById('tabLog').classList.toggle('active', view === 'Workout Log');
+        loadData(true);
+      }
+
+      function onFilterChange() {
+        loadData(true);
+      }
+
+      function onSearchInput() {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { loadData(true); }, 250);
+      }
+
+      function refresh() {
+        setStatus('Refreshing…');
+        google.script.run
+          .withSuccessHandler(renderPayload)
+          .withFailureHandler(onError)
+          .applyTrackerFilters(currentFilters());
+      }
+
+      function syncAll() {
+        setStatus('Syncing muscle tabs…');
+        google.script.run
+          .withSuccessHandler(function (payload) {
+            setStatus('Sync complete.');
+            renderPayload(payload);
+          })
+          .withFailureHandler(onError)
+          .syncAllAndRefresh();
+      }
+
+      function loadData(syncSheet) {
+        setLoading(true);
+        var fn = syncSheet ? 'applyTrackerFilters' : 'getTrackerData';
+        google.script.run
+          .withSuccessHandler(renderPayload)
+          .withFailureHandler(onError)
+          [fn](currentFilters());
+      }
+
+      function onError(err) {
+        setLoading(false);
+        setStatus('Error: ' + (err && err.message ? err.message : err));
+      }
+
+      function fillSelect(id, options, selected) {
+        var el = document.getElementById(id);
+        el.innerHTML = '';
+        (options || []).forEach(function (opt) {
+          var o = document.createElement('option');
+          o.value = opt;
+          o.textContent = opt;
+          if (opt === selected) o.selected = true;
+          el.appendChild(o);
+        });
+      }
+
+      function renderPayload(payload) {
+        setLoading(false);
+        if (!payload) return;
+
+        fillSelect('muscle', payload.muscles, payload.filters.muscle);
+        fillSelect('exercise', payload.exercises, payload.filters.exercise);
+        state.logCatalog = payload.logCatalog || [];
+        var logMuscles = (payload.muscles || []).filter(function (m) { return m !== 'All'; });
+        var preferredMuscle = payload.filters.muscle !== 'All'
+          ? payload.filters.muscle
+          : (document.getElementById('logMuscle').value || logMuscles[0]);
+        fillSelect('logMuscle', logMuscles, preferredMuscle);
+        refillLogExercises_();
+        onLogExerciseChange();
+        if (!document.getElementById('logDate').value) setLogDateToday();
+        // Keep HTML placeholder visible — never put hint text into .value
+        document.getElementById('search').value = isBlankSearch_(payload.filters.search)
+          ? ''
+          : String(payload.filters.search);
+        state.view = payload.filters.view || 'Summary';
+        document.getElementById('tabSummary').classList.toggle('active', state.view === 'Summary');
+        document.getElementById('tabLog').classList.toggle('active', state.view === 'Workout Log');
+
+        document.getElementById('kpiExercises').textContent = payload.kpis.exercises;
+        document.getElementById('kpiEntries').textContent = payload.kpis.entries;
+        document.getElementById('kpiTop').textContent = payload.kpis.topLift || '—';
+        document.getElementById('kpiTopExercise').textContent = payload.kpis.topLiftExercise || '';
+        document.getElementById('sectionTitle').textContent = payload.sectionTitle;
+        document.getElementById('refreshedAt').textContent = 'Updated ' + (payload.refreshedAt || '');
+
+        renderTable(payload);
+        setStatus('');
+      }
+
+      function renderTable(payload) {
+        var wrap = document.getElementById('tableWrap');
+        var rows = payload.rows || [];
+        if (!rows.length) {
+          wrap.innerHTML = '<div class="empty">No entries match these filters.</div>';
+          return;
+        }
+
+        var headers = payload.headers || [];
+        var html = '<table><thead><tr>';
+        headers.forEach(function (h) { html += '<th>' + escapeHtml(h) + '</th>'; });
+        html += '</tr></thead><tbody>';
+        rows.forEach(function (row) {
+          html += '<tr>';
+          row.forEach(function (cell) { html += '<td>' + escapeHtml(cell) + '</td>'; });
+          html += '</tr>';
+        });
+        html += '</tbody></table>';
+        wrap.innerHTML = html;
+      }
+
+      function escapeHtml(text) {
+        return String(text == null ? '' : text)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;');
+      }
+
+      document.addEventListener('DOMContentLoaded', function () {
+        setLoading(true);
+        google.script.run
+          .withSuccessHandler(renderPayload)
+          .withFailureHandler(onError)
+          .getTrackerBootstrap();
+      });
+    </script>
+  </body>
+</html>
