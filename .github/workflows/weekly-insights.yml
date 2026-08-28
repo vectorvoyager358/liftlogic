@@ -1,0 +1,55 @@
+name: Weekly Insights
+
+# ~Sunday 10:00 PM America/Chicago (Mon 03:00 UTC ≈ CDT; ~9 PM CST in winter)
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  insights:
+    name: Generate & email weekly insights
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package
+        run: pip install -e ".[ai]"
+
+      - name: Write credentials from secrets
+        env:
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_TOKEN: ${{ secrets.GOOGLE_TOKEN }}
+          LIFTLOGIC_SPREADSHEET_ID: ${{ secrets.LIFTLOGIC_SPREADSHEET_ID }}
+          NIM_API_KEY: ${{ secrets.NIM_API_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p credentials
+          echo "$GOOGLE_CLIENT_SECRET" > credentials/client_secret.json
+          echo "$GOOGLE_TOKEN" > credentials/token.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          Path("credentials/spreadsheet.json").write_text(
+              json.dumps({"spreadsheet_id": os.environ["LIFTLOGIC_SPREADSHEET_ID"]})
+          )
+          Path("credentials/nim.json").write_text(
+              json.dumps({"api_key": os.environ["NIM_API_KEY"]})
+          )
+          PY
+
+      - name: Run weekly insights
+        env:
+          SMTP_HOST: smtp.gmail.com
+          SMTP_PORT: "587"
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+        run: |
+          liftlogic insights --archive --email --allow-empty
