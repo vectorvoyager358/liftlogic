@@ -214,6 +214,13 @@ class TestGenerateInsights:
         assert "No workout data" in result
 
     @patch("liftlogic.ai._chat")
+    def test_allow_empty_still_calls_chat(self, mock_chat):
+        mock_chat.return_value = "Time to log your first session."
+        result = generate_insights([], config=_test_config(), allow_empty=True)
+        assert result == "Time to log your first session."
+        mock_chat.assert_called_once()
+
+    @patch("liftlogic.ai._chat")
     def test_calls_chat_for_summary(self, mock_chat):
         mock_chat.return_value = "Great consistency this week."
         entries = [_entry("Barbell Bench Press", 185, date(2026, 8, 1))]
@@ -223,11 +230,47 @@ class TestGenerateInsights:
         assert "coaching summary" in messages[-1]["content"].lower()
 
 
+class TestBuildAiInsightsRows:
+    def test_non_archive_layout(self):
+        from liftlogic.ai import build_ai_insights_rows
+
+        rows = build_ai_insights_rows(
+            "Hello.\n\nWorld.",
+            as_of=date(2026, 8, 24),
+            archive=False,
+        )
+        assert rows[0] == ["LiftLogic AI Insights", "Generated: 2026-08-24"]
+        assert rows[2] == ["Hello."]
+        assert rows[3] == ["World."]
+
+    def test_archive_prepends_week_and_keeps_prior(self):
+        from liftlogic.ai import build_ai_insights_rows
+
+        existing = [
+            ["LiftLogic AI Insights", "Generated: 2026-08-17"],
+            [],
+            ["## Week of 2026-08-17"],
+            [],
+            ["Old advice."],
+        ]
+        rows = build_ai_insights_rows(
+            "New advice.",
+            as_of=date(2026, 8, 24),
+            existing_rows=existing,
+            archive=True,
+        )
+        assert rows[0][0] == "LiftLogic AI Insights"
+        assert rows[2] == ["## Week of 2026-08-24"]
+        assert ["New advice."] in rows
+        assert ["---"] in rows
+        assert ["## Week of 2026-08-17"] in rows
+        assert ["Old advice."] in rows
+
+
 class TestWriteAiInsightsTab:
     def test_writes_and_unhides_tab(self):
         client = MagicMock()
         client.get_sheet_id.return_value = 42
-        client._sheets.spreadsheets.return_value.batchUpdate.return_value.execute.return_value = {}
 
         write_ai_insights_tab(
             client,
@@ -236,12 +279,35 @@ class TestWriteAiInsightsTab:
             as_of=date(2026, 8, 22),
         )
 
+        client.batch_update.assert_called_once()
         client.clear_values.assert_called_once()
         client.update_values.assert_called_once()
         rows = client.update_values.call_args[0][2]
         assert rows[0][0] == "LiftLogic AI Insights"
         assert rows[2] == ["Line one."]
         assert rows[3] == ["Line two."]
+
+    def test_archive_reads_existing_before_write(self):
+        client = MagicMock()
+        client.get_sheet_id.return_value = 42
+        client.get_values.return_value = [
+            ["LiftLogic AI Insights", "Generated: 2026-08-01"],
+            [],
+            ["Prior week."],
+        ]
+
+        write_ai_insights_tab(
+            client,
+            "sheet123",
+            "Fresh week.",
+            as_of=date(2026, 8, 24),
+            archive=True,
+        )
+
+        client.get_values.assert_called_once()
+        rows = client.update_values.call_args[0][2]
+        assert rows[2] == ["## Week of 2026-08-24"]
+        assert ["Prior week."] in rows
 
 
 def _test_config() -> NimConfig:

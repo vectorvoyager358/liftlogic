@@ -282,9 +282,15 @@ def generate_insights(
     credentials_dir: str | Path = "credentials",
     as_of: date | None = None,
     goals: list[Goal] | None = None,
+    *,
+    allow_empty: bool = False,
 ) -> str:
-    """Generate a full coaching summary from structured analytics."""
-    if not entries:
+    """Generate a full coaching summary from structured analytics.
+
+    When ``allow_empty`` is True (weekly automation), still call the model even
+    if there are no workouts so a report is always produced.
+    """
+    if not entries and not allow_empty:
         return "No workout data found. Log some workouts first, then try again."
 
     cfg = config or load_nim_config(credentials_dir)
@@ -292,6 +298,11 @@ def generate_insights(
     context_json = json.dumps(context, indent=2)
 
     prompt = INSIGHTS_PROMPT.format(context_json=context_json)
+    if not entries:
+        prompt += (
+            "\n\nNote: There are currently no workout log entries. "
+            "Acknowledge that and give a short motivational plan to start logging."
+        )
 
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -300,37 +311,92 @@ def generate_insights(
     return _chat(cfg, messages)
 
 
+def build_ai_insights_rows(
+    content: str,
+    *,
+    as_of: date,
+    existing_rows: list[list[Any]] | None = None,
+    archive: bool = False,
+) -> list[list[Any]]:
+    """Build sheet rows for AI_Insights — optionally prepend a weekly archive block."""
+    week_header = f"## Week of {as_of.isoformat()}"
+    body_rows: list[list[Any]] = [[week_header], []]
+    for paragraph in content.strip().split("\n\n"):
+        paragraph = paragraph.strip()
+        if paragraph:
+            body_rows.append([paragraph])
+
+    header: list[list[Any]] = [
+        ["LiftLogic AI Insights", f"Updated: {as_of.isoformat()}"],
+        [],
+    ]
+
+    if not archive:
+        # Non-archive: keep previous simple layout (title + paragraphs only)
+        simple: list[list[Any]] = [
+            ["LiftLogic AI Insights", f"Generated: {as_of.isoformat()}"],
+            [],
+        ]
+        for paragraph in content.strip().split("\n\n"):
+            paragraph = paragraph.strip()
+            if paragraph:
+                simple.append([paragraph])
+        return simple
+
+    prior = _strip_insights_title(existing_rows or [])
+    if not prior:
+        return header + body_rows
+    return header + body_rows + [["---"], []] + prior
+
+
+def _strip_insights_title(rows: list[list[Any]]) -> list[list[Any]]:
+    """Drop the top title/blank rows so archives do not repeat the sheet banner."""
+    rest = list(rows)
+    if rest and rest[0] and str(rest[0][0]).strip().startswith("LiftLogic AI Insights"):
+        rest = rest[1:]
+    while rest and (
+        not rest[0] or not any(str(cell).strip() for cell in rest[0] if cell is not None)
+    ):
+        rest = rest[1:]
+    return rest
+
+
 def write_ai_insights_tab(
     client: SheetsClient,
     spreadsheet_id: str,
     content: str,
     as_of: date | None = None,
+    *,
+    archive: bool = False,
 ) -> None:
-    """Write generated insights to the AI_Insights tab and unhide it."""
+    """Write generated insights to the AI_Insights tab and unhide it.
+
+    When ``archive`` is True, prepend a dated weekly section and keep prior content.
+    """
     today = as_of or date.today()
-    rows: list[list[Any]] = [
-        ["LiftLogic AI Insights", f"Generated: {today}"],
-        [],
-    ]
-    for paragraph in content.strip().split("\n\n"):
-        paragraph = paragraph.strip()
-        if paragraph:
-            rows.append([paragraph])
+    existing: list[list[Any]] = []
+    if archive:
+        existing = client.get_values(spreadsheet_id, f"{AI_INSIGHTS_SHEET}!A:B")
+
+    rows = build_ai_insights_rows(
+        content,
+        as_of=today,
+        existing_rows=existing,
+        archive=archive,
+    )
 
     sheet_id = client.get_sheet_id(spreadsheet_id, AI_INSIGHTS_SHEET)
-    client._sheets.spreadsheets().batchUpdate(
-        spreadsheetId=spreadsheet_id,
-        body={
-            "requests": [
-                {
-                    "updateSheetProperties": {
-                        "properties": {"sheetId": sheet_id, "hidden": False},
-                        "fields": "hidden",
-                    }
+    client.batch_update(
+        spreadsheet_id,
+        [
+            {
+                "updateSheetProperties": {
+                    "properties": {"sheetId": sheet_id, "hidden": False},
+                    "fields": "hidden",
                 }
-            ]
-        },
-    ).execute()
+            }
+        ],
+    )
 
     client.clear_values(spreadsheet_id, f"{AI_INSIGHTS_SHEET}!A:Z")
     client.update_values(spreadsheet_id, f"{AI_INSIGHTS_SHEET}!A1", rows)

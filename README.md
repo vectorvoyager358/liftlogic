@@ -100,6 +100,7 @@ liftlogic reconcile     # compare muscle tabs vs Workout_Log for drift
 | `liftlogic format` | Apply visual formatting to Dashboard, muscle tabs, and Analytics |
 | `liftlogic ask "…"` | Ask a natural-language question (requires NVIDIA NIM) |
 | `liftlogic insights` | Generate AI coaching summary and write to AI_Insights tab |
+| `liftlogic insights --archive --email --allow-empty` | Weekly job: archive on sheet + Gmail (see credentials/README.md) |
 | `liftlogic search-notes "…"` | Search workout notes by keyword (RAG preview) |
 | `liftlogic goals` | Show progress toward active goals |
 

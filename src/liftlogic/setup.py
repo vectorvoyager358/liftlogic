@@ -577,6 +577,28 @@ def _write_dashboard_content(client: SheetsClient, spreadsheet_id: str) -> None:
     client.update_values(spreadsheet_id, f"{DASHBOARD_SHEET}!A1", values)
 
 
+def _clear_validation_request(
+    sheet_id: int,
+    *,
+    start_row: int,
+    end_row: int,
+    start_column: int,
+    end_column: int,
+) -> dict[str, Any]:
+    return {
+        "setDataValidation": {
+            "range": {
+                "sheetId": sheet_id,
+                "startRowIndex": start_row - 1,
+                "endRowIndex": end_row,
+                "startColumnIndex": start_column,
+                "endColumnIndex": end_column,
+            },
+            "rule": None,
+        }
+    }
+
+
 def _create_dashboard_validations(client: SheetsClient, spreadsheet_id: str) -> None:
     sheet_id = _sheet_id(client, spreadsheet_id, DASHBOARD_SHEET)
     requests: list[dict[str, Any]] = [
@@ -600,6 +622,14 @@ def _create_dashboard_validations(client: SheetsClient, spreadsheet_id: str) -> 
             options=["All"],
             start_row=3,
             end_row=3,
+        ),
+        # SEARCH (E–G) is free text — never a dropdown
+        _clear_validation_request(
+            sheet_id=sheet_id,
+            start_row=3,
+            end_row=3,
+            start_column=4,
+            end_column=7,
         ),
     ]
     client.batch_update(spreadsheet_id, requests)

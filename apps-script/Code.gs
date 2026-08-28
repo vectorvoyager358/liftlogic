@@ -426,6 +426,8 @@ function ensureDashboardControls_(dash) {
   if (!searchCell.getNote()) {
     searchCell.setNote(DASHBOARD_CFG.SEARCH_HINT);
   }
+  // SEARCH is free text — remove any dropdown validation copied from VIEW by mistake
+  dash.getRange('E3:G3').clearDataValidations();
 }
 
 // ---------------------------------------------------------------------------
@@ -740,13 +742,23 @@ function buildTrackerTable_(view, entries) {
 
 function formatDate_(dateVal) {
   if (!dateVal) return '';
-  var d;
-  if (dateVal instanceof Date) {
-    d = dateVal;
-  } else {
-    d = new Date(dateVal);
-  }
+  var d = dateVal instanceof Date ? dateVal : new Date(dateVal);
   if (isNaN(d.getTime())) return String(dateVal);
+
+  // Google Sheets date-only cells arrive at UTC midnight; local getDate() shifts back a day.
+  if (
+    d.getUTCHours() === 0 &&
+    d.getUTCMinutes() === 0 &&
+    d.getUTCSeconds() === 0 &&
+    d.getUTCMilliseconds() === 0
+  ) {
+    var noonUtc = new Date(d.getTime() + 12 * 60 * 60 * 1000);
+    var y = noonUtc.getUTCFullYear();
+    var m = String(noonUtc.getUTCMonth() + 1).padStart(2, '0');
+    var day = String(noonUtc.getUTCDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
   var y = d.getFullYear();
   var m = String(d.getMonth() + 1).padStart(2, '0');
   var day = String(d.getDate()).padStart(2, '0');

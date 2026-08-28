@@ -86,6 +86,21 @@ def main() -> None:
         action="store_true",
         help="Print insights to terminal without writing to the sheet",
     )
+    insights_parser.add_argument(
+        "--archive",
+        action="store_true",
+        help="Prepend a dated weekly section and keep prior AI_Insights content",
+    )
+    insights_parser.add_argument(
+        "--email",
+        action="store_true",
+        help="Email the insights (requires SMTP_* / EMAIL_* env vars)",
+    )
+    insights_parser.add_argument(
+        "--allow-empty",
+        action="store_true",
+        help="Generate even when Workout_Log has no entries",
+    )
 
     search_parser = subparsers.add_parser(
         "search-notes",
@@ -267,12 +282,31 @@ def _cmd_insights(args: argparse.Namespace) -> None:
     entries = repo.get_workouts()
     goals = get_goals(client, spreadsheet_id)
 
-    insights = generate_insights(entries, credentials_dir=args.credentials_dir, goals=goals)
+    insights = generate_insights(
+        entries,
+        credentials_dir=args.credentials_dir,
+        goals=goals,
+        allow_empty=args.allow_empty,
+    )
     print(insights)
 
-    if not args.print_only and entries:
-        write_ai_insights_tab(client, spreadsheet_id, insights)
+    if not args.print_only and (entries or args.allow_empty):
+        write_ai_insights_tab(
+            client,
+            spreadsheet_id,
+            insights,
+            archive=args.archive,
+        )
         print(f"\nInsights written to {AI_INSIGHTS_SHEET} tab.")
+
+    if args.email:
+        from liftlogic.email_notify import send_email
+
+        send_email(
+            subject="LiftLogic weekly insights",
+            body=insights,
+        )
+        print("Insights emailed.")
 
 
 def _cmd_search_notes(args: argparse.Namespace) -> None:
